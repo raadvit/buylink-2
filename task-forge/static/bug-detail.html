@@ -1,0 +1,354 @@
+<!doctype html>
+<html lang="cs">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Bug — Task Forge</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;550;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="/static/style.css" />
+<style>
+  html, body { height: 100%; overflow: hidden; display: flex; flex-direction: column; }
+</style>
+<script src="/static/nav.js"></script>
+</head>
+<body>
+<div id="root" style="flex:1;overflow:hidden;display:flex;flex-direction:column">
+  <div class="cs-layout">
+    <div class="cs-body">
+
+      <main class="cs-form-wrap">
+        <div class="cs-form-content">
+          <div class="cs-breadcrumb">
+            <a href="/list">Všechny user stories</a><span class="sep">/</span><span id="bread-id" class="mono">…</span>
+          </div>
+
+          <input class="cs-title-input" id="f-name" type="text" placeholder="Stručný název bugu…" maxlength="120" style="color:#e53a36 !important;-webkit-text-fill-color:#e53a36 !important;" />
+          <datalist id="bug-epic-suggestions"></datalist>
+          <div id="bug-timeline-container"></div>
+
+          <div class="cs-fields">
+
+            <div class="tf-field" id="fw-what-happened">
+              <label class="tf-label" for="f-what-happened">Co se stalo <span class="req">*</span><span class="si" id="si-what-happened"></span></label>
+              <textarea class="tf-textarea" id="f-what-happened" placeholder="Popis chování, které je špatně."></textarea>
+            </div>
+
+            <div class="tf-field" id="fw-expected">
+              <label class="tf-label" for="f-expected">Očekávaný výsledek <span class="req">*</span><span class="si" id="si-expected"></span></label>
+              <textarea class="tf-textarea" id="f-expected" placeholder="Jak by to mělo správně fungovat?"></textarea>
+            </div>
+
+            <div class="sf-inline-group">
+              <div class="tf-field" id="fw-epic">
+                <label class="tf-label" for="f-epic">Epic <span class="req">*</span><span class="si" id="si-epic"></span></label>
+                <input class="tf-input" id="f-epic" type="text" placeholder="EP-01 Task-forge" list="bug-epic-suggestions" />
+              </div>
+
+              <div class="tf-field" id="fw-role">
+                <label class="tf-label">Role <span class="req">*</span></label>
+                <div class="tf-chips" id="roles">
+                  <button class="tf-chip" data-role="seller"  type="button">seller</button>
+                  <button class="tf-chip" data-role="buyer"   type="button">buyer</button>
+                  <button class="tf-chip" data-role="admin"   type="button">admin</button>
+                  <button class="tf-chip" data-role="api"     type="button">api</button>
+                  <button class="tf-chip" data-role="support" type="button">support</button>
+                </div>
+              </div>
+            </div>
+
+            <div class="tf-field" id="fw-steps">
+              <label class="tf-label" for="f-steps">Kroky k reprodukci<span class="si" id="si-steps"></span></label>
+              <textarea class="tf-textarea" id="f-steps" placeholder="1. Otevřít stránku&#10;2. Kliknout na tlačítko&#10;3. …"></textarea>
+            </div>
+
+            <div class="tf-field" id="fw-details">
+              <label class="tf-label" for="f-details">Další detaily<span class="si" id="si-details"></span></label>
+              <textarea class="tf-textarea" id="f-details" placeholder="Prohlížeč, prostředí, verze, logy, …"></textarea>
+            </div>
+
+          </div>
+        </div>
+
+        <div class="cs-footer">
+          <div style="display:flex;gap:8px;margin-right:auto">
+            <button class="tf-btn tf-btn-ghost" type="button" id="btn-delete">Smazat</button>
+            <button class="tf-btn tf-btn-ghost" type="button" id="btn-duplicate">Duplikovat</button>
+          </div>
+          <button class="tf-btn tf-btn-primary" type="button" id="btn-save">Uložit</button>
+        </div>
+      </main>
+
+      <aside class="cs-agent">
+        <div class="cs-agent-head">
+          <div class="cs-agent-avatar" style="background:#e53935">B</div>
+          <div>
+            <div class="cs-agent-name">Bug Agent</div>
+            <div class="cs-agent-status">
+              <span class="cs-agent-status-dot"></span>
+              <span id="bug-agent-status">Načítám…</span>
+            </div>
+          </div>
+        </div>
+        <div class="cs-chat" id="bugChat"></div>
+      </aside>
+
+    </div>
+  </div>
+</div>
+<script src="/static/shared.js"></script>
+<script src="/static/bug.js"></script>
+<script>
+  initNav('list');
+  const issueNumber = parseInt(location.pathname.replace('/bug-', ''), 10);
+
+  // Prefill from API
+  fetch(`/api/issues/${issueNumber}`)
+    .then(r => { if (!r.ok) return r.json().then(j => Promise.reject(j.error || r.status)); return r.json(); })
+    .then(apiData => {
+      document.title = `BUG-${String(issueNumber).padStart(3,'0')} — ${apiData.title}`;
+      document.getElementById('bread-id').textContent = `BUG-${String(issueNumber).padStart(3,'0')}`;
+
+      const body = (apiData.body || apiData.wiki || '').replace(/\r\n/g, '\n');
+      function section(heading) {
+        const m = body.match(new RegExp('## ' + heading + '\\n([\\s\\S]*?)(?=\\n+##|$)'));
+        return m ? m[1].trim() : '';
+      }
+      const roleMetaMatch = body.match(/- Role:\s*(.+)/);
+      const roles = (apiData.role || (roleMetaMatch && roleMetaMatch[1]) || '').split(/[,\s]+/).filter(Boolean);
+
+      const nameEl = document.getElementById('f-name');
+      if (nameEl) nameEl.value = apiData.title || '';
+
+      const epicEl = document.getElementById('f-epic');
+      if (epicEl) epicEl.value = apiData.epic || section('Epic') || '';
+
+      const fields = {
+        'f-what-happened': section('Co se stalo'),
+        'f-expected':      section('Očekávaný výsledek'),
+        'f-steps':         section('Kroky k reprodukci'),
+        'f-details':       section('Další detaily'),
+      };
+      for (const [id, val] of Object.entries(fields)) {
+        const el = document.getElementById(id);
+        if (el) { el.value = val; _bugAutoGrow(el); }
+      }
+
+      document.querySelectorAll('#roles .tf-chip').forEach(c => {
+        if (roles.includes(c.dataset.role)) c.classList.add('on');
+      });
+      const roleFw = document.getElementById('fw-role');
+      if (roleFw) roleFw.classList.toggle('tf-field--filled', !!document.querySelector('#roles .tf-chip.on'));
+
+      const state = apiData.state === 'closed' ? 'Uzavřen' : 'Otevřen';
+      document.getElementById('bug-agent-status').textContent = state;
+
+      const NON_DELETABLE_BUG_STATUSES = new Set(['ready_for_testing', 'ready-for-testing', 'done', 'cancelled']);
+      const bugCanDelete = !NON_DELETABLE_BUG_STATUSES.has(apiData.story_status) && apiData.state !== 'closed';
+      if (!bugCanDelete) {
+        document.getElementById('btn-delete')?.remove();
+      }
+
+      const tlContainer = document.getElementById('bug-timeline-container');
+      if (tlContainer && typeof renderTimelineInline === 'function') {
+        renderTimelineInline(tlContainer, apiData.story_status || '');
+      }
+
+      // Tlačítko Spustit vývoj pro new stav — v cs-agent-head (stejně jako u story)
+      if (!apiData.story_status || apiData.story_status === 'new') {
+        const agentHead = document.querySelector('.cs-agent-head');
+        if (agentHead) {
+          const startDevBtn = document.createElement('button');
+          startDevBtn.className = 'btn-start-dev';
+          startDevBtn.type = 'button';
+          startDevBtn.id = 'btn-start-dev-bug';
+          startDevBtn.innerHTML = '&#9654; Spustit vývoj';
+          agentHead.appendChild(startDevBtn);
+          startDevBtn.addEventListener('click', async () => {
+            startDevBtn.disabled = true;
+            try {
+              const res = await fetch('/api/implement', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ issue_number: issueNumber }),
+              });
+              const j = await res.json();
+              if (!res.ok) { _bugAddChat('Chyba: ' + (j.error || res.status)); startDevBtn.disabled = false; return; }
+              _bugAddChat('Vývoj spuštěn. Bug přesunut do fronty implementace.');
+              startDevBtn.remove();
+            } catch (e) {
+              _bugAddChat('Síťová chyba: ' + e.message); startDevBtn.disabled = false;
+            }
+          });
+        }
+      }
+
+      // Tlačítko Vytvořit bug pro done stav (bez Zavřít)
+      if (apiData.story_status === 'done' || apiData.state === 'closed') {
+        const footer = document.querySelector('.cs-footer');
+        if (footer) {
+          const createBugBtn = document.createElement('button');
+          createBugBtn.className = 'tf-btn tf-btn-secondary';
+          createBugBtn.type = 'button'; createBugBtn.id = 'btn-create-bug';
+          createBugBtn.textContent = 'Vytvořit bug';
+          footer.appendChild(createBugBtn);
+          createBugBtn.addEventListener('click', () => {
+            const id = `BUG-${String(issueNumber).padStart(3,'0')}`;
+            sessionStorage.setItem('tf-new-bug', JSON.stringify({
+              name: `${id} ${apiData.title}`,
+              epic: apiData.epic || document.getElementById('f-epic')?.value.trim() || '',
+              roles: [...document.querySelectorAll('#roles .tf-chip.on')].map(c => c.dataset.role),
+            }));
+            window.location = '/create-bug';
+          });
+        }
+      }
+
+      // Skrýt tlačítko Uložit pro ready_for_testing
+      if (apiData.story_status === 'ready_for_testing' || apiData.story_status === 'ready-for-testing') {
+        const saveBtn = document.getElementById('btn-save');
+        if (saveBtn) saveBtn.style.display = 'none';
+      }
+
+      // Tlačítka Vytvořit bug + Zavřít pro ready_for_testing
+      if (apiData.story_status === 'ready_for_testing' || apiData.story_status === 'ready-for-testing') {
+        const footer = document.querySelector('.cs-footer');
+        if (footer) {
+          const createBugBtn = document.createElement('button');
+          createBugBtn.className = 'tf-btn tf-btn-secondary';
+          createBugBtn.type = 'button';
+          createBugBtn.id = 'btn-create-bug';
+          createBugBtn.textContent = 'Vytvořit bug';
+          const closeBugBtn = document.createElement('button');
+          closeBugBtn.className = 'tf-btn';
+          closeBugBtn.style.cssText = 'background:var(--ok);color:#fff';
+          closeBugBtn.type = 'button';
+          closeBugBtn.id = 'btn-close-bug';
+          closeBugBtn.textContent = 'Zavřít';
+          footer.appendChild(createBugBtn);
+          footer.appendChild(closeBugBtn);
+
+          createBugBtn.addEventListener('click', () => {
+            const id = `BUG-${String(issueNumber).padStart(3,'0')}`;
+            sessionStorage.setItem('tf-new-bug', JSON.stringify({
+              name: `${id} ${apiData.title}`,
+              epic: apiData.epic || document.getElementById('f-epic')?.value.trim() || '',
+              roles: [...document.querySelectorAll('#roles .tf-chip.on')].map(c => c.dataset.role),
+            }));
+            window.location = '/create-bug';
+          });
+          closeBugBtn.addEventListener('click', async () => {
+            closeBugBtn.disabled = true;
+            try {
+              const res = await fetch(`/api/bugs/${issueNumber}/status`, {
+                method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ status: 'done' }),
+              });
+              if (res.ok) { window.location = '/list'; }
+              else { const j = await res.json(); _bugAddChat('Chyba: ' + (j.error || res.status)); closeBugBtn.disabled = false; }
+            } catch (e) {
+              _bugAddChat('Síťová chyba: ' + e.message); closeBugBtn.disabled = false;
+            }
+          });
+        }
+      }
+
+      _bugAddChat(`Bug #${issueNumber}`);
+      if (apiData.issue_url) {
+        const chat = document.getElementById('bugChat');
+        const link = document.createElement('div');
+        link.className = 'cs-msg agent';
+        const a = document.createElement('a');
+        a.href = apiData.issue_url;
+        a.target = '_blank';
+        a.rel = 'noopener';
+        a.textContent = 'Zobrazit na GitHubu ↗';
+        link.appendChild(a);
+        chat.appendChild(link);
+      }
+    })
+    .catch(err => {
+      document.getElementById('bug-agent-status').textContent = 'Chyba';
+      _bugAddChat('Nepodařilo se načíst bug: ' + err);
+    });
+
+  // Override duplicate — navigovat na /create-bug místo reload
+  document.addEventListener('DOMContentLoaded', () => {
+    const dupBtn = document.getElementById('btn-duplicate');
+    if (dupBtn) {
+      const fresh = dupBtn.cloneNode(true);
+      dupBtn.replaceWith(fresh);
+      fresh.addEventListener('click', () => {
+        const data = {
+          name:          document.getElementById('f-name')?.value.trim() || '',
+          epic:          document.getElementById('f-epic')?.value.trim() || '',
+          roles:         [...document.querySelectorAll('#roles .tf-chip.on')].map(c => c.dataset.role),
+          what_happened: document.getElementById('f-what-happened')?.value.trim() || '',
+          expected:      document.getElementById('f-expected')?.value.trim() || '',
+          steps:         document.getElementById('f-steps')?.value.trim() || '',
+          details:       document.getElementById('f-details')?.value.trim() || '',
+        };
+        sessionStorage.setItem('tf-bug-duplicate', JSON.stringify(data));
+        window.location = '/create-bug';
+      });
+    }
+
+    // Save
+    document.getElementById('btn-save')?.addEventListener('click', async () => {
+      if (!_bugValidate()) return;
+      const btn = document.getElementById('btn-save');
+      btn.disabled = true;
+      _bugSetStatus('Ukládám…');
+
+      const payload = {
+        issue_number:  issueNumber,
+        name:          document.getElementById('f-name').value.trim(),
+        epic:          document.getElementById('f-epic').value.trim(),
+        role:          [...document.querySelectorAll('#roles .tf-chip.on')].map(c => c.dataset.role).join(', '),
+        what_happened: document.getElementById('f-what-happened').value.trim(),
+        expected:      document.getElementById('f-expected').value.trim(),
+        steps:         document.getElementById('f-steps')?.value.trim() || '',
+        details:       document.getElementById('f-details')?.value.trim() || '',
+      };
+
+      try {
+        const res = await fetch('/api/update-bug', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+        const json = await res.json();
+        if (!res.ok) throw new Error(json.error || res.status);
+        _bugSetStatus('Uloženo');
+        _bugAddChat('✓ Uloženo');
+      } catch (e) {
+        _bugAddChat('Chyba: ' + e.message);
+        _bugSetStatus('Chyba');
+        btn.disabled = false;
+      }
+    });
+
+    // Delete
+    document.getElementById('btn-delete')?.addEventListener('click', async () => {
+      const idStr = `BUG-${String(issueNumber).padStart(3,'0')}`;
+      if (!confirm(`Opravdu smazat bug #${issueNumber} (${idStr})? Tuto akci nelze vrátit.`)) return;
+      const btn = document.getElementById('btn-delete');
+      const saveBtn = document.getElementById('btn-save');
+      btn.disabled = true; saveBtn.disabled = true;
+      _bugSetStatus('Mažu…');
+      try {
+        const res = await fetch(`/api/issues/${issueNumber}`, { method: 'DELETE' });
+        const ct = res.headers.get('content-type') || '';
+        const json = ct.includes('json') ? await res.json() : {};
+        if (!res.ok) throw new Error(json.error || `HTTP ${res.status}`);
+        window.location = '/list';
+      } catch (e) {
+        _bugAddChat('Chyba při mazání: ' + e.message);
+        _bugSetStatus('Chyba');
+        btn.disabled = false; saveBtn.disabled = false;
+      }
+    });
+  });
+</script>
+</body>
+</html>

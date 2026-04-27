@@ -1,0 +1,472 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Issues — BuyLink</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f5f5f5; color: #1a1a1a; min-height: 100vh; padding: 2rem 1rem; }
+
+  /* ── Page layout ── */
+  .page { max-width: 1000px; margin: 0 auto; display: flex; flex-direction: column; gap: 8px; }
+  h1 { font-size: 18px; font-weight: 500; color: #1a1a1a; }
+  .page-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 8px; flex-wrap: wrap; }
+  .head-btns { display: flex; align-items: center; gap: 6px; }
+
+  /* ── Buttons ── */
+  .hbtn { display: inline-flex; align-items: center; gap: 5px; font-family: inherit; font-size: 12px; font-weight: 500; padding: 6px 13px; border-radius: 7px; cursor: pointer; border: none; transition: filter .12s, transform .1s, background .12s; white-space: nowrap; }
+  .hbtn:active { transform: scale(.97); }
+  .hbtn-primary { background: #7b1fa2; color: #fff; box-shadow: 0 1px 4px rgba(123,31,162,.25); }
+  .hbtn-primary:hover { filter: brightness(.92); }
+  .hbtn-outline { background: #fff; color: #7b1fa2; border: 1px solid #ce93d8; }
+  .hbtn-outline:hover { background: #f3e5f5; }
+  .hbtn-ghost { background: transparent; color: #555; border: 1px solid #e0e0e0; }
+  .hbtn-ghost:hover { background: #f5f5f5; }
+  .hbtn-danger { background: #fff; color: #993C1D; border: 1px solid #F0997B; }
+  .hbtn-danger:hover { background: #FAECE7; }
+  .hbtn-danger:disabled, .hbtn-success:disabled { opacity: .38; cursor: not-allowed; filter: none; transform: none; }
+  .hbtn-success { background: #43a047; color: #fff; box-shadow: 0 1px 4px rgba(67,160,71,.2); }
+  .hbtn-success:hover { filter: brightness(.92); }
+
+  /* ── Issues panel ── */
+  .issues-panel { background: #fff; border: 0.5px solid #e0e0e0; border-radius: 10px; overflow: hidden; }
+
+  /* ── Toolbar ── */
+  .toolbar { display: flex; align-items: center; gap: 8px; padding: 10px 14px; border-bottom: 0.5px solid #f0f0f0; background: #fafafa; flex-wrap: wrap; }
+  .toolbar-left { display: flex; align-items: center; gap: 6px; flex: 1; flex-wrap: wrap; }
+  .toolbar-right { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
+
+  /* ── Filters ── */
+  .gh-filter { font-size: 11px; font-weight: 500; padding: 3px 10px; border-radius: 20px; border: 0.5px solid #e0e0e0; cursor: pointer; background: none; font-family: inherit; color: #555; transition: all .1s; }
+  .gh-filter:hover { background: #f5f5f5; }
+  .gh-filter.active-all { background: #1a1a1a; color: #fff; border-color: #1a1a1a; }
+  .gh-filter.active-idea { background: #EEEDFE; color: #3C3489; border-color: #AFA9EC; }
+  .gh-filter.active-story { background: #E1F5EE; color: #085041; border-color: #5DCAA5; }
+  .gh-filter.active-bug { background: #FAECE7; color: #712B13; border-color: #F0997B; }
+  .filter-sep { width: 1px; height: 18px; background: #e0e0e0; flex-shrink: 0; }
+
+  /* ── Batch action bar ── */
+  .batch-bar { display: none; align-items: center; gap: 8px; padding: 8px 14px; background: #f0effe; border-bottom: 0.5px solid #c5c0f0; font-size: 12px; color: #3C3489; font-weight: 500; }
+  .batch-bar.visible { display: flex; }
+  .batch-count { flex: 1; }
+  .batch-deselect { font-size: 11px; color: #7b1fa2; background: none; border: none; cursor: pointer; font-family: inherit; font-weight: 500; padding: 0; }
+  .batch-deselect:hover { text-decoration: underline; }
+
+  /* ── Search input ── */
+  .search-wrap { position: relative; display: flex; align-items: center; }
+  .search-wrap svg { position: absolute; left: 8px; color: #aaa; pointer-events: none; }
+  .search-input { font-family: inherit; font-size: 12px; padding: 5px 8px 5px 28px; border: 0.5px solid #e0e0e0; border-radius: 6px; background: #fff; color: #1a1a1a; outline: none; width: 180px; transition: border-color .15s, width .2s; }
+  .search-input:focus { border-color: #1976d2; width: 220px; }
+
+  /* ── Table ── */
+  .issues-table { width: 100%; border-collapse: collapse; }
+  .issues-table thead th { font-size: 10px; font-weight: 500; color: #aaa; text-transform: uppercase; letter-spacing: .07em; padding: 8px 10px; text-align: left; border-bottom: 0.5px solid #f0f0f0; background: #fafafa; white-space: nowrap; }
+  .issues-table thead th:first-child { width: 36px; padding-left: 14px; }
+  .issues-table thead th.col-sort { cursor: pointer; user-select: none; }
+  .issues-table thead th.col-sort:hover { color: #555; }
+  .issues-table tbody tr { border-bottom: 0.5px solid #f5f5f5; transition: background .1s; cursor: pointer; }
+  .issues-table tbody tr:last-child { border-bottom: none; }
+  .issues-table tbody tr:hover { background: #f8f8f8; }
+  .issues-table tbody tr.selected { background: #f0effe; }
+  .issues-table tbody tr.selected:hover { background: #e8e6fc; }
+  .issues-table td { padding: 9px 10px; font-size: 13px; color: #1a1a1a; vertical-align: middle; }
+  .issues-table td:first-child { padding-left: 14px; }
+
+  /* ── Checkbox ── */
+  .row-check { width: 14px; height: 14px; accent-color: #7b1fa2; cursor: pointer; flex-shrink: 0; }
+  .th-check { width: 14px; height: 14px; accent-color: #7b1fa2; cursor: pointer; }
+
+  /* ── Issue title cell ── */
+  .issue-title-cell { display: flex; align-items: center; gap: 8px; min-width: 0; }
+  .gh-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+  .gh-dot.idea { background: #7F77DD; }
+  .gh-dot.story { background: #1D9E75; }
+  .gh-dot.bug { background: #D85A30; }
+  .issue-title-text { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 340px; }
+  .issue-id { font-size: 11px; color: #aaa; flex-shrink: 0; }
+
+  /* ── Badges ── */
+  .gh-badge { font-size: 10px; font-weight: 500; padding: 2px 7px; border-radius: 4px; border: 0.5px solid; white-space: nowrap; }
+  .gh-badge.idea { background: #EEEDFE; color: #3C3489; border-color: #AFA9EC; }
+  .gh-badge.story { background: #E1F5EE; color: #085041; border-color: #5DCAA5; }
+  .gh-badge.bug { background: #FAECE7; color: #712B13; border-color: #F0997B; }
+
+  /* ── Meta cells ── */
+  .cell-meta { font-size: 11px; color: #888; white-space: nowrap; }
+  .cell-author { font-size: 11px; color: #888; }
+
+  /* ── Empty state ── */
+  .empty-row td { text-align: center; padding: 3rem 1rem; color: #aaa; font-size: 13px; }
+
+  /* ── Footer ── */
+  .panel-footer { display: flex; align-items: center; justify-content: space-between; padding: 8px 14px; border-top: 0.5px solid #f0f0f0; background: #fafafa; font-size: 11px; color: #aaa; flex-wrap: wrap; gap: 6px; }
+  .footer-count { display: flex; align-items: center; gap: 5px; }
+
+  /* ── Toast / status ── */
+  .toast { display: none; position: fixed; bottom: 24px; right: 24px; align-items: center; gap: 10px; padding: 10px 16px; border-radius: 10px; border: 0.5px solid; font-size: 13px; background: #fff; z-index: 200; box-shadow: 0 4px 16px rgba(0,0,0,.1); animation: toastIn .25s cubic-bezier(.34,1.4,.64,1); max-width: 340px; }
+  .toast.visible { display: flex; }
+  .toast.success { background: #e8f5e9; border-color: #a5d6a7; color: #1b5e20; }
+  .toast.error { background: #ffebee; border-color: #ef9a9a; color: #b71c1c; }
+  .toast-body { flex: 1; }
+  .toast-title { font-weight: 500; font-size: 13px; }
+  .toast-sub { font-size: 11px; opacity: .8; }
+  .toast-close { background: none; border: none; cursor: pointer; font-size: 16px; opacity: .5; color: inherit; padding: 0; line-height: 1; }
+  .toast-close:hover { opacity: .9; }
+  @keyframes toastIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+
+  /* ── Confirm dialog ── */
+  .confirm-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.35); z-index: 300; align-items: center; justify-content: center; padding: 1rem; }
+  .confirm-overlay.open { display: flex; animation: fadeIn .15s ease; }
+  @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+  .confirm-box { background: #fff; border: 0.5px solid #e0e0e0; border-radius: 10px; width: 100%; max-width: 380px; overflow: hidden; animation: slideUp .2s cubic-bezier(.34,1.3,.64,1); }
+  @keyframes slideUp { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+  .confirm-head { padding: 14px 16px 10px; display: flex; align-items: center; gap: 8px; }
+  .confirm-title { font-size: 14px; font-weight: 500; color: #1a1a1a; flex: 1; }
+  .confirm-body { padding: 0 16px 14px; font-size: 13px; color: #555; line-height: 1.5; }
+  .confirm-footer { padding: 10px 16px; border-top: 0.5px solid #f0f0f0; background: #fafafa; display: flex; justify-content: flex-end; gap: 7px; }
+  .cbtn-cancel { font-family: inherit; font-size: 12px; font-weight: 500; padding: 6px 14px; border-radius: 7px; border: 0.5px solid #e0e0e0; background: #fff; color: #555; cursor: pointer; }
+  .cbtn-cancel:hover { background: #f5f5f5; }
+  .cbtn-delete { font-family: inherit; font-size: 12px; font-weight: 500; padding: 6px 14px; border-radius: 7px; border: none; background: #D85A30; color: #fff; cursor: pointer; transition: filter .12s; }
+  .cbtn-delete:hover { filter: brightness(.9); }
+  .cbtn-implement { font-family: inherit; font-size: 12px; font-weight: 500; padding: 6px 14px; border-radius: 7px; border: none; background: #43a047; color: #fff; cursor: pointer; transition: filter .12s; }
+  .cbtn-implement:hover { filter: brightness(.9); }
+
+  @media (max-width: 680px) {
+    .issue-title-text { max-width: 180px; }
+    .col-epic, .col-author { display: none; }
+    .search-input { width: 130px; }
+    .search-input:focus { width: 160px; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ── Confirm modal ── -->
+<div class="confirm-overlay" id="confirmOverlay">
+  <div class="confirm-box" id="confirmBox">
+    <div class="confirm-head">
+      <span id="confirmIcon"></span>
+      <span class="confirm-title" id="confirmTitle"></span>
+    </div>
+    <div class="confirm-body" id="confirmBody"></div>
+    <div class="confirm-footer" id="confirmFooter"></div>
+  </div>
+</div>
+
+<!-- ── Toast ── -->
+<div class="toast" id="toast">
+  <div class="toast-body"><div class="toast-title" id="toastTitle"></div><div class="toast-sub" id="toastSub"></div></div>
+  <button class="toast-close" onclick="closeToast()">×</button>
+</div>
+
+<div class="page">
+
+  <!-- Page header -->
+  <div class="page-head">
+    <h1>Issues</h1>
+    <div class="head-btns">
+      <button class="hbtn hbtn-outline" onclick="window.location.href='#'">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        Nová story
+      </button>
+      <button class="hbtn hbtn-primary" onclick="window.location.href='#'">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 8v4l3 3"/></svg>
+        Vytvořit myšlenku
+      </button>
+    </div>
+  </div>
+
+  <!-- Issues panel -->
+  <div class="issues-panel">
+
+    <!-- Toolbar -->
+    <div class="toolbar">
+      <div class="toolbar-left">
+        <!-- Filters -->
+        <button class="gh-filter active-all" id="gff-all" onclick="setFilter('all',this)">Vše</button>
+        <button class="gh-filter" id="gff-idea" onclick="setFilter('idea',this)">
+          <span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:#7F77DD;margin-right:3px;vertical-align:middle"></span>Idea
+        </button>
+        <button class="gh-filter" id="gff-story" onclick="setFilter('story',this)">
+          <span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:#1D9E75;margin-right:3px;vertical-align:middle"></span>User story
+        </button>
+        <button class="gh-filter" id="gff-bug" onclick="setFilter('bug',this)">
+          <span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:#D85A30;margin-right:3px;vertical-align:middle"></span>Bug
+        </button>
+        <div class="filter-sep"></div>
+        <!-- Search -->
+        <div class="search-wrap">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          <input type="text" class="search-input" id="searchInput" placeholder="Hledat issues…" oninput="applyFilters()">
+        </div>
+      </div>
+      <div class="toolbar-right">
+        <button class="hbtn hbtn-danger" id="btnDelete" onclick="confirmDelete()" disabled>
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
+          Smazat
+        </button>
+        <button class="hbtn hbtn-success" id="btnImplement" onclick="confirmImplement()" disabled>
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+          Implementovat
+        </button>
+      </div>
+    </div>
+
+    <!-- Batch action bar -->
+    <div class="batch-bar" id="batchBar">
+      <span class="batch-count" id="batchCount"></span>
+      <button class="batch-deselect" onclick="deselectAll()">Zrušit výběr</button>
+    </div>
+
+    <!-- Table -->
+    <table class="issues-table">
+      <thead>
+        <tr>
+          <th><input type="checkbox" class="th-check" id="checkAll" onchange="toggleAll(this)"></th>
+          <th>Issue</th>
+          <th>Typ</th>
+          <th class="col-epic">Epic</th>
+          <th class="col-author">Autor</th>
+          <th class="col-sort" onclick="sortByDate()">Datum <span id="sortIndicator">↓</span></th>
+        </tr>
+      </thead>
+      <tbody id="issuesTbody"></tbody>
+    </table>
+
+    <!-- Footer -->
+    <div class="panel-footer">
+      <span id="footerCount" class="footer-count"></span>
+      <span id="footerSelected" style="color:#7b1fa2;font-weight:500;display:none"></span>
+    </div>
+  </div>
+
+</div>
+
+<script>
+const ISSUES = [
+  {id:42,type:'idea',title:'Personalizovaný doporučovací systém pro kupující',epic:'EP-01 BuyLink',author:'raadvit',date:'13. 4. 2026'},
+  {id:38,type:'idea',title:'Rychlé filtrování produktů pomocí hlasového vstupu',epic:'EP-04 Košík',author:'jan.novak',date:'10. 4. 2026'},
+  {id:35,type:'idea',title:'Dashboard prodejce s live statistikami',epic:'EP-02 Administrace',author:'raadvit',date:'7. 4. 2026'},
+  {id:31,type:'idea',title:'Automatické tagging produktů přes AI',epic:'EP-02 Administrace',author:'petra.k',date:'3. 4. 2026'},
+  {id:29,type:'idea',title:'Notifikace při poklesu ceny sledovaného produktu',epic:'EP-07 Notifikace',author:'raadvit',date:'1. 4. 2026'},
+  {id:27,type:'story',title:'Jako buyer chci vybrat AlzaBox při checkoutu',epic:'EP-05 Doručení',author:'raadvit',date:'12. 4. 2026'},
+  {id:26,type:'story',title:'Jako seller chci nastavit automatické escrow pravidla',epic:'EP-06 Escrow výplata',author:'jan.novak',date:'9. 4. 2026'},
+  {id:24,type:'story',title:'Jako admin chci zobrazit seznam všech otevřených sporů',epic:'EP-08 Customer service',author:'petra.k',date:'6. 4. 2026'},
+  {id:22,type:'story',title:'Jako buyer chci sdílet košík s přítelem',epic:'EP-04 Košík',author:'raadvit',date:'4. 4. 2026'},
+  {id:20,type:'story',title:'Jako seller chci exportovat objednávky do CSV',epic:'EP-02 Administrace',author:'jan.novak',date:'2. 4. 2026'},
+  {id:18,type:'story',title:'Jako buyer chci uložit platební metodu pro příště',epic:'EP-03 Platba',author:'raadvit',date:'31. 3. 2026'},
+  {id:15,type:'bug',title:'Checkout padá při prázdném PSČ na mobilním Chromu',epic:'EP-03 Platba',author:'jan.novak',date:'14. 4. 2026'},
+  {id:14,type:'bug',title:'Escrow timer se nezobrazuje správně v Safari',epic:'EP-06 Escrow výplata',author:'petra.k',date:'11. 4. 2026'},
+  {id:12,type:'bug',title:'Duplicitní notifikace při potvrzení objednávky',epic:'EP-07 Notifikace',author:'raadvit',date:'8. 4. 2026'},
+  {id:10,type:'bug',title:'Obrázky produktu se nenačtou při pomalém připojení',epic:'EP-01 BuyLink',author:'jan.novak',date:'5. 4. 2026'},
+  {id:8,type:'bug',title:'Filtr ceny resetuje se po návratu z detailu',epic:'EP-04 Košík',author:'petra.k',date:'2. 4. 2026'},
+];
+
+let data = [...ISSUES];
+let activeFilter = 'all';
+let selectedIds = new Set();
+let sortAsc = false;
+
+const labelMap = {idea:'idea', story:'user story', bug:'bug'};
+
+function applyFilters() {
+  const q = document.getElementById('searchInput').value.toLowerCase().trim();
+  data = ISSUES.filter(i => {
+    const matchType = activeFilter === 'all' || i.type === activeFilter;
+    const matchQ = !q || i.title.toLowerCase().includes(q) || i.epic.toLowerCase().includes(q) || ('#' + i.id).includes(q) || i.author.toLowerCase().includes(q);
+    return matchType && matchQ;
+  });
+  // keep only selected that are still visible
+  const visibleIds = new Set(data.map(i => i.id));
+  selectedIds.forEach(id => { if (!visibleIds.has(id)) selectedIds.delete(id); });
+  render();
+}
+
+function setFilter(type, btn) {
+  activeFilter = type;
+  document.querySelectorAll('.gh-filter').forEach(b => {
+    b.className = 'gh-filter';
+    if (b.id === 'gff-' + type) b.classList.add('active-' + type);
+  });
+  applyFilters();
+}
+
+function sortByDate() {
+  sortAsc = !sortAsc;
+  document.getElementById('sortIndicator').textContent = sortAsc ? '↑' : '↓';
+  data = [...data].reverse();
+  render();
+}
+
+function toggleRow(id, cb) {
+  if (cb.checked) selectedIds.add(id);
+  else selectedIds.delete(id);
+  updateSelectionUI();
+  render(); // re-render rows for selected class
+}
+
+function toggleAll(masterCb) {
+  if (masterCb.checked) data.forEach(i => selectedIds.add(i.id));
+  else selectedIds.clear();
+  updateSelectionUI();
+  render();
+}
+
+function deselectAll() {
+  selectedIds.clear();
+  updateSelectionUI();
+  render();
+}
+
+function updateSelectionUI() {
+  const n = selectedIds.size;
+  document.getElementById('btnDelete').disabled = n === 0;
+  document.getElementById('btnImplement').disabled = n === 0;
+  const batchBar = document.getElementById('batchBar');
+  const batchCount = document.getElementById('batchCount');
+  const footerSel = document.getElementById('footerSelected');
+  if (n > 0) {
+    batchBar.classList.add('visible');
+    batchCount.textContent = `Vybráno ${n} ${n === 1 ? 'issue' : n < 5 ? 'issues' : 'issues'}`;
+    footerSel.style.display = '';
+    footerSel.textContent = `${n} vybráno`;
+  } else {
+    batchBar.classList.remove('visible');
+    footerSel.style.display = 'none';
+  }
+}
+
+function render() {
+  const tbody = document.getElementById('issuesTbody');
+  const allVisible = data.length > 0 && data.every(i => selectedIds.has(i.id));
+  const someVisible = data.some(i => selectedIds.has(i.id));
+  const masterCb = document.getElementById('checkAll');
+  masterCb.checked = allVisible && data.length > 0;
+  masterCb.indeterminate = someVisible && !allVisible;
+
+  document.getElementById('footerCount').textContent = data.length + (data.length === 1 ? ' issue' : ' issues');
+
+  if (!data.length) {
+    tbody.innerHTML = '<tr class="empty-row"><td colspan="6">Žádné issues neodpovídají filtru</td></tr>';
+    return;
+  }
+
+  tbody.innerHTML = data.map(i => {
+    const checked = selectedIds.has(i.id);
+    return `
+    <tr class="${checked ? 'selected' : ''}" onclick="handleRowClick(event,${i.id})">
+      <td><input type="checkbox" class="row-check" ${checked ? 'checked' : ''} onclick="event.stopPropagation();toggleRow(${i.id},this)"></td>
+      <td>
+        <div class="issue-title-cell">
+          <span class="gh-dot ${i.type}"></span>
+          <span class="issue-id">#${i.id}</span>
+          <span class="issue-title-text">${i.title}</span>
+        </div>
+      </td>
+      <td><span class="gh-badge ${i.type}">${labelMap[i.type]}</span></td>
+      <td class="cell-meta col-epic">${i.epic}</td>
+      <td class="cell-author col-author">${i.author}</td>
+      <td class="cell-meta">${i.date}</td>
+    </tr>`;
+  }).join('');
+}
+
+/* ── Confirm dialog ── */
+let pendingAction = null;
+
+function showConfirm({ icon, title, body, confirmLabel, confirmClass, onConfirm }) {
+  document.getElementById('confirmTitle').textContent = title;
+  document.getElementById('confirmBody').textContent = body;
+  document.getElementById('confirmIcon').innerHTML = icon;
+  const footer = document.getElementById('confirmFooter');
+  footer.innerHTML = `
+    <button class="cbtn-cancel" onclick="closeConfirm()">Zrušit</button>
+    <button class="${confirmClass}" id="confirmActionBtn">${confirmLabel}</button>
+  `;
+  document.getElementById('confirmActionBtn').onclick = () => { closeConfirm(); onConfirm(); };
+  document.getElementById('confirmOverlay').classList.add('open');
+  document.body.style.overflow = 'hidden';
+}
+
+function closeConfirm() {
+  document.getElementById('confirmOverlay').classList.remove('open');
+  document.body.style.overflow = '';
+}
+
+function confirmDelete() {
+  const n = selectedIds.size;
+  showConfirm({
+    icon: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#D85A30" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg>`,
+    title: 'Smazat issues',
+    body: `Opravdu chceš smazat ${n} ${n === 1 ? 'issue' : n < 5 ? 'issues' : 'issues'}? Tato akce nelze vrátit zpět.`,
+    confirmLabel: 'Smazat',
+    confirmClass: 'cbtn-delete',
+    onConfirm: doDelete
+  });
+}
+
+function confirmImplement() {
+  const n = selectedIds.size;
+  showConfirm({
+    icon: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#43a047" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>`,
+    title: 'Označit jako implementováno',
+    body: `Označit ${n} ${n === 1 ? 'issue' : n < 5 ? 'issues' : 'issues'} jako implementované? Issues budou přesunuty do archivu.`,
+    confirmLabel: 'Implementovat',
+    confirmClass: 'cbtn-implement',
+    onConfirm: doImplement
+  });
+}
+
+function doDelete() {
+  const n = selectedIds.size;
+  selectedIds.forEach(id => {
+    const idx = ISSUES.findIndex(i => i.id === id);
+    if (idx !== -1) ISSUES.splice(idx, 1);
+  });
+  selectedIds.clear();
+  updateSelectionUI();
+  applyFilters();
+  showToast('success', `${n} ${n === 1 ? 'issue smazáno' : 'issues smazáno'}`, 'Issues byly odstraněny');
+}
+
+function doImplement() {
+  const n = selectedIds.size;
+  selectedIds.forEach(id => {
+    const idx = ISSUES.findIndex(i => i.id === id);
+    if (idx !== -1) ISSUES.splice(idx, 1);
+  });
+  selectedIds.clear();
+  updateSelectionUI();
+  applyFilters();
+  showToast('success', `${n} ${n === 1 ? 'issue označeno' : 'issues označeno'} jako implementováno`, 'Přesunuto do archivu');
+}
+
+function handleRowClick(e, id) {
+  // clicking row without hitting checkbox selects it
+  if (e.target.type === 'checkbox') return;
+  if (selectedIds.has(id)) selectedIds.delete(id);
+  else selectedIds.add(id);
+  updateSelectionUI();
+  render();
+}
+
+/* ── Toast ── */
+let toastTimer = null;
+function showToast(type, title, sub) {
+  const el = document.getElementById('toast');
+  document.getElementById('toastTitle').textContent = title;
+  document.getElementById('toastSub').textContent = sub;
+  el.className = 'toast visible ' + type;
+  if (toastTimer) clearTimeout(toastTimer);
+  toastTimer = setTimeout(closeToast, 3500);
+}
+function closeToast() {
+  document.getElementById('toast').classList.remove('visible');
+}
+
+// init
+applyFilters();
+</script>
+</body>
+</html>

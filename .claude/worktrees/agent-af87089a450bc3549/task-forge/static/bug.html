@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Nahlásit bug</title>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+
+<div id="status-bar" hidden>
+  <div class="status-icon" id="status-icon"></div>
+  <div class="status-body">
+    <div class="status-title" id="status-title"></div>
+    <div class="status-detail" id="status-detail" hidden></div>
+  </div>
+</div>
+
+<div class="page">
+  <div class="page-head">
+    <h1 onclick="window.location='/'" style="cursor:pointer">Nahlásit bug</h1>
+    <div class="head-btns">
+      <a href="/" class="hbtn hbtn-ghost">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
+        Zpět na feature request
+      </a>
+    </div>
+  </div>
+
+  <div class="r1">
+    <div class="card" id="c-name">
+      <div class="card-head">
+        <div class="card-title">
+          <span class="req-dot"></span>Název bugu
+        </div>
+        <span class="si" id="si-name"></span>
+      </div>
+      <input type="text" id="f-name" placeholder="Stručný popis bugu" oninput="check('name')">
+      <div class="err-msg">Název je povinný</div>
+    </div>
+  </div>
+
+  <div class="r-main">
+    <div class="form-col">
+
+      <div class="card" id="c-what-happened">
+        <div class="card-head">
+          <div class="card-title">
+            <span class="req-dot"></span>Co se stalo
+          </div>
+          <span class="si" id="si-what-happened"></span>
+        </div>
+        <textarea id="f-what-happened" placeholder="Popis chování, které je špatně." oninput="autoGrow(this);check('what_happened')"></textarea>
+        <div class="err-msg">Povinné pole</div>
+      </div>
+
+      <div class="card" id="c-expected">
+        <div class="card-head">
+          <div class="card-title">
+            <span class="req-dot"></span>Očekávaný výsledek
+          </div>
+          <span class="si" id="si-expected"></span>
+        </div>
+        <textarea id="f-expected" placeholder="Jak by to mělo správně fungovat?" oninput="autoGrow(this);check('expected')"></textarea>
+        <div class="err-msg">Povinné pole</div>
+      </div>
+
+      <div class="card" id="c-steps">
+        <div class="card-head">
+          <div class="card-title">
+            <span class="opt-dot"></span>Kroky k reprodukci
+          </div>
+          <span class="si" id="si-steps"></span>
+        </div>
+        <textarea id="f-steps" placeholder="1. Otevřít stránku&#10;2. Kliknout na tlačítko&#10;3. …" oninput="autoGrow(this)"></textarea>
+      </div>
+
+      <div class="card" id="c-details">
+        <div class="card-head">
+          <div class="card-title">
+            <span class="opt-dot"></span>Další detaily
+          </div>
+          <span class="si" id="si-details"></span>
+        </div>
+        <textarea id="f-details" placeholder="Prohlížeč, prostředí, verze, logy, …" oninput="autoGrow(this)"></textarea>
+      </div>
+
+      <div class="btn-row" style="grid-template-columns: 1fr 1fr;">
+        <button class="btn btn-save" onclick="newBug()">Nový bug</button>
+        <button class="btn btn-send" onclick="submitBug()">Vytvořit bug issue</button>
+      </div>
+
+      <div id="done-section" hidden>
+        <div class="done-banner">
+          <div class="done-title">Bug byl nahlášen</div>
+          <div id="done-content"></div>
+        </div>
+      </div>
+
+    </div>
+
+    <div class="agent-col">
+      <div class="card" id="c-epic">
+        <div class="card-head"><div class="card-title"><span class="req-dot"></span>Epic</div><span class="si" id="si-epic"></span></div>
+        <select id="f-epic" onchange="check('epic')">
+          <option value="">— vyber —</option>
+          <option>EP-01 Task-forge</option>
+          <option>EP-02 Zákazník</option>
+          <option>EP-03 Rezervace</option>
+          <option>EP-04 Objednávky</option>
+          <option>EP-05 Notifikace</option>
+        </select>
+        <div class="err-msg">Vyber epic</div>
+      </div>
+      <div class="card" id="c-role">
+        <div class="card-head"><div class="card-title"><span class="req-dot"></span>Role</div><span class="si" id="si-role"></span></div>
+        <div class="chip-group" id="roles">
+          <div class="chip" onclick="toggleChip(this,'role')">seller</div>
+          <div class="chip" onclick="toggleChip(this,'role')">buyer</div>
+          <div class="chip" onclick="toggleChip(this,'role')">admin</div>
+          <div class="chip" onclick="toggleChip(this,'role')">api</div>
+          <div class="chip" onclick="toggleChip(this,'role')">support</div>
+        </div>
+        <div class="err-msg">Vyber alespoň jednu roli</div>
+      </div>
+      <div class="info-box">Bug issue bude vytvořen v GitHubu s labelem <strong>bug</strong>.</div>
+    </div>
+  </div>
+</div>
+
+<script src="/static/shared.js?v=202604202219" defer></script>
+<script src="/static/bug.js?v=202604202219" defer></script>
+</body>
+</html>

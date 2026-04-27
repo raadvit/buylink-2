@@ -1,0 +1,505 @@
+<!doctype html>
+<html lang="cs">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Story detail — Task Forge</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;550;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="/static/style.css" />
+<style>
+  html, body { height: 100%; overflow: hidden; display: flex; flex-direction: column; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .btn-validating-spinner { display:inline-block;width:12px;height:12px;border:2px solid currentColor;border-top-color:transparent;border-radius:50%;animation:spin .7s linear infinite;margin-right:6px;vertical-align:middle; }
+</style>
+<script src="/static/nav.js"></script>
+<script src="/static/shared.js"></script>
+<script src="/static/story-form.js"></script>
+</head>
+<body>
+<div id="root" style="flex:1;overflow:hidden;display:flex;flex-direction:column">
+  <p style="padding:2rem;color:var(--ink-3)">Načítám…</p>
+</div>
+<script>
+  const issueNumber = parseInt(location.pathname.replace('/us-', ''), 10);
+  initNav('list');
+
+  const EDITABLE_STATUSES = new Set(['new', '']);
+
+  let _apiData   = null;
+  let _sessionId = localStorage.getItem(`tf_session_${issueNumber}`) || null;
+  let _pollTimer = null;
+  const root = document.getElementById('root');
+  const _LS_KEY = `tf_session_${issueNumber}`;
+
+  fetch(`/api/issues/${issueNumber}`)
+    .then(r => { if (!r.ok) return r.json().then(j => Promise.reject(j.error || r.status)); return r.json(); })
+    .then(apiData => {
+      _apiData = apiData;
+      document.title = `US-${String(issueNumber).padStart(3,'0')} — ${apiData.title}`;
+      const data      = storyDataFromApi(apiData);
+      const editable  = EDITABLE_STATUSES.has(data.status);
+      const NON_DELETABLE_STATUSES = new Set(['ready_for_testing', 'ready-for-testing', 'done', 'cancelled']);
+      const canDelete = !NON_DELETABLE_STATUSES.has(data.status) && apiData.state !== 'closed';
+      const idStr     = `US-${String(issueNumber).padStart(3,'0')}`;
+      const breadcrumb = `<a href="/list">Všechny user stories</a><span class="sep">/</span><span class="mono">${idStr}</span>`;
+
+      initStoryForm(root, data, {
+        editable,
+        breadcrumb,
+        saveLabel:   'Uložit změny',
+        submitLabel: 'Odeslat k validaci →',
+        onSave:      editable ? updateStory : null,
+        onSubmit:    editable ? submitStory : null,
+        onDuplicate: duplicateStory,
+        onDelete:    canDelete ? deleteStory : null,
+      });
+      initChatInput();
+
+      // Tlačítka Vytvořit bug + Zavřít (ready_for_testing)
+      const btnCreateBug = root.querySelector('#btn-create-bug');
+      if (btnCreateBug) {
+        btnCreateBug.addEventListener('click', () => {
+          const id = `US-${String(issueNumber).padStart(3,'0')}`;
+          sessionStorage.setItem('tf-new-bug', JSON.stringify({
+            name: `${id} ${_apiData.title}`,
+            epic: data.epic || '',
+            roles: Array.isArray(data.role) ? data.role : [],
+          }));
+          window.location = '/create-bug';
+        });
+      }
+      const btnCloseStory = root.querySelector('#btn-close-story');
+      if (btnCloseStory) {
+        btnCloseStory.addEventListener('click', async () => {
+          btnCloseStory.disabled = true;
+          try {
+            const res = await fetch(`/api/stories/${issueNumber}/archive`, { method: 'POST' });
+            const j = res.ok ? await res.json() : await res.json().catch(() => ({}));
+            if (res.ok) { window.location = '/list'; }
+            else { addChatMsg('Chyba: ' + (j.error || res.status), 'user'); btnCloseStory.disabled = false; }
+          } catch (e) {
+            addChatMsg('Síťová chyba: ' + e.message, 'user'); btnCloseStory.disabled = false;
+          }
+        });
+      }
+
+      // Tlačítko Spustit vývoj
+      const btnDev = root.querySelector('#btn-start-dev');
+      if (btnDev) {
+        btnDev.addEventListener('click', async () => {
+          btnDev.disabled = true;
+          try {
+            const r = await fetch('/api/implement', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ issue_number: issueNumber }),
+            });
+            const ct = r.headers.get('content-type') || '';
+            const j = ct.includes('json') ? await r.json() : {};
+            if (!r.ok) {
+              addChatMsg('Chyba: ' + (j.error || `HTTP ${r.status}`), 'user');
+              btnDev.disabled = false;
+            }
+          } catch (e) {
+            addChatMsg('Síťová chyba: ' + e.message, 'user');
+            btnDev.disabled = false;
+          }
+        }, { once: true });
+      }
+
+      // Vykresli timeline
+      const tlContainer = root.querySelector('#story-timeline-container');
+      if (tlContainer && typeof renderTimelineInline === 'function') {
+        renderTimelineInline(tlContainer, data.status || '');
+      }
+
+      // Zobraz blocker důvod v chatu pokud je story blocked
+      if (data.status === 'blocked') {
+        const wiki = apiData.wiki || apiData.body || '';
+        const conflictsMatch = wiki.match(/##\s+Konflikty\s*\n([\s\S]*?)(?=\n##\s|\n---\s*\n|$)/);
+        const chat = root.querySelector('#agentChat');
+        function addBlockerCard(description, resolution) {
+          if (!chat) return;
+          const card = document.createElement('div');
+          card.style.cssText = 'background:oklch(96% 0.05 80);border:1px solid oklch(88% 0.08 80);border-radius:10px;padding:14px 16px;display:flex;flex-direction:column;gap:8px;';
+          const header = document.createElement('div');
+          header.style.cssText = 'display:flex;align-items:center;gap:8px;';
+          header.innerHTML = `
+            <span style="width:28px;height:28px;border-radius:8px;background:var(--accent);display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;">
+              <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M6 1 L11 6 L6 11 L1 6 Z" fill="white"/></svg>
+            </span>
+            <span style="font-size:11px;font-weight:700;letter-spacing:.09em;text-transform:uppercase;color:oklch(50% 0.13 75);">● Blocked</span>`;
+          const body = document.createElement('div');
+          body.style.cssText = 'font-size:13px;color:var(--ink);line-height:1.5;';
+          body.textContent = description;
+          card.appendChild(header);
+          card.appendChild(body);
+          if (resolution) {
+            const res = document.createElement('div');
+            res.style.cssText = 'font-size:12px;color:var(--ink-2);line-height:1.4;';
+            res.textContent = '→ ' + resolution;
+            card.appendChild(res);
+          }
+          chat.appendChild(card);
+          chat.scrollTop = chat.scrollHeight;
+        }
+
+        if (conflictsMatch) {
+          const blocks = conflictsMatch[1].trim().split(/\n(?=###)/).map(b => b.trim()).filter(Boolean);
+          if (blocks.length === 0) {
+            addBlockerCard('Story je blokována — důvod není specifikován.', null);
+          } else {
+            blocks.forEach(block => {
+              const desc = block.match(/\*\*DESCRIPTION:\*\*\s*([^\n]+)/)?.[1]?.trim()
+                        || block.match(/DESCRIPTION:\s*([^\n]+)/)?.[1]?.trim();
+              const res  = block.match(/\*\*SUGGESTED_RESOLUTION:\*\*\s*([^\n]+)/)?.[1]?.trim()
+                        || block.match(/SUGGESTED_RESOLUTION:\s*([^\n]+)/)?.[1]?.trim();
+              if (desc) addBlockerCard(desc, res || null);
+            });
+          }
+        } else {
+          addBlockerCard('Story je blokována — důvod není specifikován.', null);
+        }
+      }
+
+      // Načti epics pro datalist
+      if (editable) {
+        fetch('/api/issues')
+          .then(r => r.json())
+          .then(issues => {
+            const epics = [...new Set(issues.map(i => i.epic).filter(Boolean))];
+            const dl = root.querySelector('#epic-suggestions');
+            if (dl) dl.innerHTML = epics.map(e => `<option value="${e}">`).join('');
+          })
+          .catch(() => {});
+      }
+
+      // Auto-spustit validaci při přesměrování z vytvoření (?submit=1)
+      if (editable && new URLSearchParams(location.search).get('submit') === '1') {
+        history.replaceState(null, '', location.pathname);
+        submitStory();
+      }
+
+      // Obnovit polling pokud existuje uložená session (a není hotová)
+      if (_sessionId) {
+        fetch('/api/session?session_id=' + encodeURIComponent(_sessionId))
+          .then(r => r.json())
+          .then(s => {
+            if (s.status === 'done' || s.status === 'error' || s.error) {
+              localStorage.removeItem(_LS_KEY);
+              _sessionId = null;
+            } else {
+              setValidating(true);
+              setChatInputEnabled(true);
+              startPolling();
+            }
+          })
+          .catch(() => { localStorage.removeItem(_LS_KEY); _sessionId = null; });
+      }
+    })
+    .catch(err => {
+      const el = document.createElement('div');
+      el.style.cssText = 'padding:2rem;color:var(--danger)';
+      el.textContent = 'Nepodařilo se načíst story: ' + err;
+      root.replaceChildren(el);
+    });
+
+  // ── Duplicate ──────────────────────────────────────────────────────────────
+  function duplicateStory() {
+    if (!_apiData) return;
+    const data = storyDataFromApi(_apiData);
+    sessionStorage.setItem('tf-duplicate', JSON.stringify({
+      title: data.title,
+      epic:  data.epic,
+      role:  data.role,
+      why:   data.why,
+      shows: data.shows,
+      behaves: data.behaves,
+      risk:  data.risk,
+      open:  data.open,
+      ac:    data.ac,
+    }));
+    window.location = '/create-story-2';
+  }
+
+  // ── Helpers ────────────────────────────────────────────────────────────────
+  function addChatMsg(text, role = 'agent') {
+    const chat = root.querySelector('#agentChat');
+    if (!chat) return;
+    const div = document.createElement('div');
+    div.className = `cs-msg ${role}`;
+    div.textContent = text;
+    chat.appendChild(div);
+    chat.scrollTop = chat.scrollHeight;
+  }
+
+  function setStatus(text) {
+    const el = root.querySelector('.cs-agent-status');
+    if (el) el.innerHTML = `<span class="cs-agent-status-dot"></span>${text}`;
+  }
+
+  function setBtns(disabled) {
+    root.querySelector('#btn-save')  ?.toggleAttribute('disabled', disabled);
+    root.querySelector('#btn-submit')?.toggleAttribute('disabled', disabled);
+    root.querySelector('#btn-delete')?.toggleAttribute('disabled', disabled);
+  }
+
+  function setChatInputEnabled(on) {
+    const inp = root.querySelector('#agentInput');
+    const btn = root.querySelector('#agentSend');
+    if (inp) inp.disabled = !on;
+    if (btn) btn.disabled = !on;
+  }
+
+  function initChatInput() {
+    const inp = root.querySelector('#agentInput');
+    const btn = root.querySelector('#agentSend');
+    if (!inp || !btn) return;
+    setChatInputEnabled(false);
+    async function sendMsg() {
+      const text = inp.value.trim();
+      if (!text || !_sessionId) return;
+      inp.value = '';
+      addChatMsg(text, 'user');
+      try {
+        await fetch(`/api/session/${_sessionId}/push`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ type: 'message', text, agent: 'user' }),
+        });
+      } catch {}
+    }
+    btn.addEventListener('click', sendMsg);
+    inp.addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMsg(); } });
+  }
+
+  function setValidating(on) {
+    setBtns(on);
+    const btn = root.querySelector('#btn-submit');
+    if (!btn) return;
+    if (on) {
+      if (!btn.dataset.origText) btn.dataset.origText = btn.innerHTML;
+      btn.innerHTML = '<span class="btn-validating-spinner"></span>Validace probíhá…';
+    } else if (btn.dataset.origText) {
+      btn.innerHTML = btn.dataset.origText;
+      delete btn.dataset.origText;
+    }
+  }
+
+  // ── Delete ─────────────────────────────────────────────────────────────────
+  async function deleteStory() {
+    const idStr = `US-${String(issueNumber).padStart(3,'0')}`;
+    if (!confirm(`Opravdu smazat story #${issueNumber} (${idStr})? Tuto akci nelze vrátit.`)) return;
+    setBtns(true); setStatus('Mažu…');
+    try {
+      const res = await fetch(`/api/issues/${issueNumber}`, { method: 'DELETE' });
+      const ct = res.headers.get('content-type') || '';
+      const json = ct.includes('json') ? await res.json() : {};
+      if (!res.ok) throw new Error(json.error || `HTTP ${res.status}`);
+      window.location = '/list';
+    } catch (e) {
+      addChatMsg('Chyba při mazání: ' + e.message, 'user');
+      setStatus('Chyba'); setBtns(false);
+    }
+  }
+
+  // ── Update (Uložit změny) ──────────────────────────────────────────────────
+  async function updateStory() {
+    const payload = root._getFormData();
+    payload.name = payload.title; delete payload.title;
+    if (!payload.name) {
+      const t = root.querySelector('#f-title');
+      if (t) { t.style.borderColor = 'var(--danger)'; t.style.boxShadow = '0 0 0 3px var(--danger-2)'; t.scrollIntoView({ behavior:'smooth', block:'center' }); }
+      return;
+    }
+    setBtns(true); setStatus('Ukládám změny…');
+    try {
+      const fd = new FormData();
+      fd.append('data', JSON.stringify({ ...payload, issue_number: issueNumber, wiki_path: _apiData?.wiki_path, story_status: _apiData?.story_status }));
+      (root._uploadedFiles || []).forEach(f => fd.append('files', f));
+      const res = await fetch('/api/update', { method: 'POST', body: fd });
+      if (!res.ok) throw new Error((await res.json()).error || res.status);
+      addChatMsg('Změny uloženy.');
+      setStatus('Uloženo');
+    } catch (e) {
+      addChatMsg('Chyba při ukládání: ' + e.message, 'user');
+      setStatus('Chyba');
+    } finally { setBtns(false); }
+  }
+
+  // ── Submit (Odeslat k validaci) ────────────────────────────────────────────
+  async function submitStory() {
+    if (!sfValidate(root)) {
+      addChatMsg('Vyplň prosím všechna povinná pole (označena *).', 'user');
+      return;
+    }
+    setValidating(true); setStatus('Ukládám…');
+    try {
+      // 1. Ulož aktuální stav story
+      const payload = root._getFormData();
+      payload.name = payload.title; delete payload.title;
+      const fd = new FormData();
+      fd.append('data', JSON.stringify({ ...payload, issue_number: issueNumber, wiki_path: _apiData?.wiki_path }));
+      (root._uploadedFiles || []).forEach(f => fd.append('files', f));
+      const saveRes = await fetch('/api/update', { method: 'POST', body: fd });
+      if (!saveRes.ok) {
+        const ct = saveRes.headers.get('content-type') || '';
+        const msg = ct.includes('json') ? (await saveRes.json()).error : `HTTP ${saveRes.status}`;
+        throw new Error(msg || saveRes.status);
+      }
+
+      // 2. Spusť analýzu
+      setStatus('Odesílám agentům…');
+      const analyzeRes = await fetch('/api/analyze', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ issue_number: issueNumber, name: payload.name }) });
+      if (!analyzeRes.ok) {
+        const ct = analyzeRes.headers.get('content-type') || '';
+        const msg = ct.includes('json') ? (await analyzeRes.json()).error : `HTTP ${analyzeRes.status}`;
+        throw new Error(msg || analyzeRes.status);
+      }
+      const data = await analyzeRes.json();
+      _sessionId = data.session_id;
+      localStorage.setItem(_LS_KEY, _sessionId);
+      const pos = data.queue_position || 1;
+      addChatMsg(pos > 1 ? `Story zařazena do fronty (pozice ${pos}). Můžeš okno zavřít — analýza poběží na pozadí.` : 'Story odeslána k validaci. Analýza začíná… Můžeš okno zavřít.');
+      startPolling();
+
+      // Přenačti issue a aktualizuj timeline ihned po odeslání
+      fetch(`/api/issues/${issueNumber}`)
+        .then(r => r.json())
+        .then(fresh => {
+          _apiData = fresh;
+          const tlContainer = root.querySelector('#story-timeline-container');
+          if (tlContainer && typeof renderTimelineInline === 'function') {
+            renderTimelineInline(tlContainer, storyDataFromApi(fresh).status || '');
+          }
+        })
+        .catch(() => {});
+    } catch (e) {
+      addChatMsg('Chyba: ' + e.message, 'user');
+      setStatus('Chyba'); setValidating(false);
+    }
+  }
+
+  // ── Polling ────────────────────────────────────────────────────────────────
+  const PHASE_LABELS = {
+    'draft-start':'Product Owner zpracovává zadání…','draft-finished':'Product Owner hotov…',
+    'conflict-check-start':'Conflict Detector kontroluje závislosti…',
+    'conflict-check-finished':'Konflikty OK…','conflict-check-failed':'⚠ Konflikty nalezeny!',
+    'arch-review-start':'Architekt přidává technické anotace…',
+    'arch-review-finished':'Architektura hotova. Story je připravena k vývoji.',
+    'done':'✓ Validace dokončena.',
+    'product_owner':'Product Owner zpracovává zadání…',
+    'conflict_detector':'Conflict Detector kontroluje závislosti…',
+    'architect':'Architekt přidává technické anotace…',
+  };
+
+  const _shownQuestions = new Set();
+  const _shownMessages  = new Set();
+
+  function renderQuestionCard(q) {
+    const card = document.createElement('div');
+    card.className = 'cs-question-card';
+    card.dataset.qid = q.id;
+    const agentEl = document.createElement('div');
+    agentEl.className = 'cs-question-agent';
+    agentEl.textContent = (q.agent || 'Agent') + ' se ptá:';
+    const textEl = document.createElement('div');
+    textEl.className = 'cs-question-text';
+    textEl.textContent = q.text;
+    const ta = document.createElement('textarea');
+    ta.className = 'cs-question-input tf-textarea';
+    ta.rows = 2;
+    ta.placeholder = 'Tvoje odpověď…';
+    const btn = document.createElement('button');
+    btn.className = 'tf-btn tf-btn-primary cs-question-send';
+    btn.type = 'button';
+    btn.style.cssText = 'margin-top:6px;align-self:flex-end';
+    btn.textContent = 'Odeslat';
+    card.append(agentEl, textEl, ta, btn);
+    btn.addEventListener('click', async () => {
+      const answer = ta.value.trim();
+      if (!answer) { ta.style.borderColor = 'var(--danger)'; return; }
+      btn.disabled = true; ta.disabled = true;
+      try {
+        const res = await fetch('/api/answer', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ session_id: _sessionId, question_id: q.id, answer }),
+        });
+        if (!res.ok) throw new Error((await res.json()).error || res.status);
+        card.classList.add('cs-question-answered');
+        addChatMsg('✓ Odpověď odeslána.');
+      } catch (e) {
+        btn.disabled = false; ta.disabled = false;
+        addChatMsg('Chyba při odesílání: ' + e.message, 'user');
+      }
+    });
+    return card;
+  }
+
+  function startPolling() {
+    if (_pollTimer) clearInterval(_pollTimer);
+    const deadline = Date.now() + 30 * 60 * 1000; // 30 min — fronta + analýza
+    let lastPhase = null;
+    let lastQueuePos = null;
+    _pollTimer = setInterval(async () => {
+      if (Date.now() > deadline) { clearInterval(_pollTimer); setValidating(false); return; }
+      try {
+        const data = await (await fetch('/api/session?session_id=' + encodeURIComponent(_sessionId))).json();
+
+        if (data.status === 'queued') {
+          const pos = data.queue_position;
+          if (pos !== lastQueuePos) {
+            lastQueuePos = pos;
+            setStatus(`Ve frontě (pozice ${pos})`);
+          }
+          return;
+        }
+
+        // Zobraz nové zprávy od agentů
+        (data.messages || []).filter(m => !_shownMessages.has(m.id)).forEach(m => {
+          _shownMessages.add(m.id);
+          addChatMsg(m.text, 'agent');
+        });
+
+        if (data.status === 'asking_questions') {
+          const questions = data.questions || [];
+          const chat = root.querySelector('#agentChat');
+          setStatus(`Čeká na odpovědi (${data.validation_agent || 'Agent'})`);
+          questions.filter(q => !q.answer && !_shownQuestions.has(q.id)).forEach(q => {
+            _shownQuestions.add(q.id);
+            if (chat) chat.appendChild(renderQuestionCard(q));
+          });
+          if (chat) chat.scrollTop = chat.scrollHeight;
+          setChatInputEnabled(true);
+          return;
+        }
+
+        const phase = data.validation_phase;
+        if (phase && phase !== lastPhase) {
+          lastPhase = phase;
+          const label = PHASE_LABELS[phase];
+          if (label) { addChatMsg(label); setStatus(label.replace('…', '')); }
+        }
+
+        if (data.status === 'done' || data.status === 'building') {
+          clearInterval(_pollTimer);
+          localStorage.removeItem(_LS_KEY);
+          addChatMsg('✓ Validace dokončena. Stránka se znovu načte.');
+          setStatus('Hotovo'); setValidating(false);
+          setTimeout(() => location.reload(), 1500);
+        }
+        if (data.status === 'error') {
+          clearInterval(_pollTimer);
+          localStorage.removeItem(_LS_KEY);
+          addChatMsg('Chyba validace: ' + (data.error || ''), 'user');
+          setStatus('Chyba'); setValidating(false);
+        }
+      } catch {}
+    }, 3000);
+  }
+</script>
+</body>
+</html>

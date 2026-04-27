@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="cs">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Nahlásit bug — Task Forge</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;550;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="/static/style.css" />
+<style>
+  html, body { height: 100%; overflow: hidden; display: flex; flex-direction: column; }
+</style>
+<script src="/static/nav.js"></script>
+</head>
+<body>
+<div id="root" style="flex:1;overflow:hidden;display:flex;flex-direction:column">
+  <div class="cs-layout">
+    <div class="cs-body">
+
+      <main class="cs-form-wrap">
+        <div class="cs-form-content">
+          <div class="cs-breadcrumb">
+            <a href="/list">Všechny user stories</a><span class="sep">/</span><span>Nahlásit bug</span>
+          </div>
+
+          <input class="cs-title-input" id="f-name" type="text" placeholder="Stručný název bugu…" maxlength="120" autofocus style="color:#e53a36 !important;-webkit-text-fill-color:#e53a36 !important;" />
+          <datalist id="bug-epic-suggestions"></datalist>
+
+          <div class="cs-fields">
+
+            <div class="tf-field" id="fw-what-happened">
+              <label class="tf-label" for="f-what-happened">Co se stalo <span class="req">*</span><span class="si" id="si-what-happened"></span></label>
+              <textarea class="tf-textarea" id="f-what-happened" placeholder="Popis chování, které je špatně."></textarea>
+            </div>
+
+            <div class="tf-field" id="fw-expected">
+              <label class="tf-label" for="f-expected">Očekávaný výsledek <span class="req">*</span><span class="si" id="si-expected"></span></label>
+              <textarea class="tf-textarea" id="f-expected" placeholder="Jak by to mělo správně fungovat?"></textarea>
+            </div>
+
+            <div class="sf-inline-group">
+              <div class="tf-field" id="fw-epic">
+                <label class="tf-label" for="f-epic">Epic <span class="req">*</span><span class="si" id="si-epic"></span></label>
+                <input class="tf-input" id="f-epic" type="text" placeholder="EP-01 Task-forge" list="bug-epic-suggestions" />
+              </div>
+
+              <div class="tf-field" id="fw-role">
+                <label class="tf-label">Role <span class="req">*</span><span class="si" id="si-role"></span></label>
+                <div class="tf-chips" id="roles">
+                <button class="tf-chip" data-role="seller" type="button">seller</button>
+                <button class="tf-chip" data-role="buyer"  type="button">buyer</button>
+                <button class="tf-chip" data-role="admin"  type="button">admin</button>
+                <button class="tf-chip" data-role="api"    type="button">api</button>
+                <button class="tf-chip" data-role="support" type="button">support</button>
+              </div>
+            </div>
+            </div>
+
+            <div class="tf-field">
+              <label class="tf-label">Attachment</label>
+              <div class="drop-zone" id="bug-dz" tabindex="0">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/></svg>
+                <span id="bug-dz-label">Nahrát nebo přetáhnout</span>
+              </div>
+              <input type="file" id="bug-f-file" accept="image/*,.pdf,.txt,.log,.json,.csv,.md" multiple style="display:none" />
+            </div>
+
+            <div class="tf-field" id="fw-steps">
+              <label class="tf-label" for="f-steps">Kroky k reprodukci<span class="si" id="si-steps"></span></label>
+              <textarea class="tf-textarea" id="f-steps" placeholder="1. Otevřít stránku&#10;2. Kliknout na tlačítko&#10;3. …"></textarea>
+            </div>
+
+            <div class="tf-field" id="fw-details">
+              <label class="tf-label" for="f-details">Další detaily<span class="si" id="si-details"></span></label>
+              <textarea class="tf-textarea" id="f-details" placeholder="Prohlížeč, prostředí, verze, logy, …"></textarea>
+            </div>
+
+          </div>
+        </div>
+
+        <div class="cs-footer">
+          <div style="display:flex;gap:8px;margin-right:auto">
+            <button class="tf-btn tf-btn-ghost" type="button" id="btn-duplicate">Duplikovat</button>
+          </div>
+          <button class="tf-btn tf-btn-primary" type="button" id="btn-submit">Vytvořit bug issue</button>
+        </div>
+      </main>
+
+      <aside class="cs-agent">
+        <div class="cs-agent-head">
+          <div class="cs-agent-avatar" style="background:#e53935">B</div>
+          <div>
+            <div class="cs-agent-name">Bug Agent</div>
+            <div class="cs-agent-status">
+              <span class="cs-agent-status-dot"></span>
+              <span id="bug-agent-status">Připraveno k odeslání</span>
+            </div>
+          </div>
+        </div>
+        <div class="cs-chat" id="bugChat">
+          <div class="cs-msg agent">Vyplň název a popis bugu. Issue bude vytvořen v GitHubu s labelem <strong>bug</strong>.</div>
+        </div>
+      </aside>
+
+    </div>
+  </div>
+</div>
+<script src="/static/shared.js"></script>
+<script src="/static/bug.js"></script>
+<script>initNav('create-bug');</script>
+</body>
+</html>

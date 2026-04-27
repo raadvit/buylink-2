@@ -1,0 +1,461 @@
+<!doctype html>
+<html lang="cs">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Seznam stories — Task forge</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;550;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+
+<script src="/static/nav.js"></script>
+
+<!-- Epic panel -->
+<div class="scrim" id="epicScrim" hidden></div>
+<aside class="epic-panel" id="epicPanel" aria-hidden="true">
+  <div class="epic-panel__head">
+    <div class="epic-panel__title">
+      <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+        <path d="M2 3 L7 1 L12 3 L12 11 L7 13 L2 11 Z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/>
+        <path d="M2 3 L7 5 L12 3 M7 5 L7 13" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/>
+      </svg>
+      Epicy
+    </div>
+    <button class="icon-btn" type="button" aria-label="Zavřít panel" id="epicClose">
+      <svg width="11" height="11" viewBox="0 0 11 11" fill="none" aria-hidden="true">
+        <path d="M2 2 L9 9 M9 2 L2 9" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+      </svg>
+    </button>
+  </div>
+  <div class="epic-panel__list" id="epicList"></div>
+</aside>
+
+<main class="page--list" id="app"></main>
+
+<script src="/static/components.js"></script>
+<script>
+  initNav('list');
+
+  const STATUS_MAP = {
+    'new':                 { label: 'Nová',         cls: 'status-pill--draft'   },
+    'draft':               { label: 'Draft',        cls: 'status-pill--draft'   },
+    'conflict-check':      { label: 'Konflikt',      cls: 'status-pill--konflikt'},
+    'ready-for-arch':      { label: 'Arch review',   cls: 'status-pill--arch'    },
+    'arch-approved':       { label: 'Arch review',   cls: 'status-pill--arch'    },
+    'validated':           { label: 'Dev plán',      cls: 'status-pill--devplan' },
+    'in_development':      { label: 'Vývoj',         cls: 'status-pill--devplan' },
+    'in-development':      { label: 'Vývoj',         cls: 'status-pill--devplan' },
+    'ready_for_testing':   { label: 'Testing',       cls: 'status-pill--verify'  },
+    'ready-for-testing':   { label: 'Testing',       cls: 'status-pill--verify'  },
+    'ready for testing':   { label: 'Testing',       cls: 'status-pill--verify'  },
+    'ready-for-pr':        { label: 'Done',          cls: 'status-pill--done'    },
+    'done':                { label: 'Done',          cls: 'status-pill--done'    },
+  };
+
+  const VERIFY_STATUSES = new Set(['draft']);
+  const DEV_STATUSES    = new Set(['validated', 'arch-approved', 'ready-for-arch']);
+
+  const TAB_FILTERS = {
+    open:          s => s.state !== 'CLOSED',
+    userstory:     s => s.state !== 'CLOSED' && s.type === 'story',
+    bugs:          s => s.state !== 'CLOSED' && s.type === 'bug',
+    closed:        s => s.state === 'CLOSED',
+    'queue-verify': s => s.state !== 'CLOSED' && VERIFY_STATUSES.has(s.story_status),
+    'queue-dev':    s => s.state !== 'CLOSED' && DEV_STATUSES.has(s.story_status),
+  };
+
+  const TAB_LABELS = { open: 'Otevřené', userstory: 'User story', bugs: 'Bugy', closed: 'Zavřené' };
+
+  const PAGE_SIZE = 100;
+
+  let allIssues   = [];
+  let closedLoaded = false;
+  let currentFilter = 'open';
+  let currentPage   = 1;
+  const selected  = new Set();
+  let epicFilter    = null;  // null = vše, string = konkrétní epic
+
+  // ── Helpers ──────────────────────────────────────────────────────────────
+
+  function formatId(num) { return 'US-' + String(num).padStart(3, '0'); }
+
+  function formatDate(dateStr) {
+    if (!dateStr) return '';
+    const [y, m, d] = dateStr.split('-');
+    return (y && m && d) ? `${parseInt(d, 10)}. ${parseInt(m, 10)}. ${y}` : dateStr;
+  }
+
+  function apiToRow(issue) {
+    const si = STATUS_MAP[issue.story_status] || { label: issue.story_status || 'Draft', cls: 'status-pill--draft' };
+    return {
+      id: formatId(issue.id), title: issue.title, status: si.label,
+      epic: issue.epic || '', isBug: issue.type === 'bug',
+      cost: issue.cost_usd ?? null, conflicts: 0, agentState: null,
+      duration: issue.duration_str ?? null, detailUrl: issue.type === 'bug' ? `/bug-${issue.id}` : `/us-${issue.id}`,
+    };
+  }
+
+  function getVisible() {
+    let rows = epicFilter ? allIssues.filter(s => s.epic === epicFilter) : allIssues;
+    return rows.filter(TAB_FILTERS[currentFilter] || (() => true));
+  }
+
+  function buildEpics() {
+    const map = new Map();
+    allIssues.forEach(s => {
+      if (!s.epic) return;
+      if (!map.has(s.epic)) map.set(s.epic, { id: s.epic.split(' ')[0], name: s.epic.split(' ').slice(1).join(' '), full: s.epic, count: 0, openCount: 0 });
+      const o = map.get(s.epic);
+      o.count++;
+      if (s.state !== 'CLOSED') o.openCount++;
+    });
+    return Array.from(map.values());
+  }
+
+  // ── Epic panel ───────────────────────────────────────────────────────────
+
+  function openEpicPanel()  {
+    document.getElementById('epicPanel').classList.add('is-open');
+    document.getElementById('epicPanel').setAttribute('aria-hidden', 'false');
+    document.getElementById('epicScrim').hidden = false;
+    renderEpicPanel();
+  }
+  function closeEpicPanel() {
+    document.getElementById('epicPanel').classList.remove('is-open');
+    document.getElementById('epicPanel').setAttribute('aria-hidden', 'true');
+    document.getElementById('epicScrim').hidden = true;
+  }
+
+  document.getElementById('epicClose').addEventListener('click', closeEpicPanel);
+  document.getElementById('epicScrim').addEventListener('click', closeEpicPanel);
+  document.addEventListener('keydown', e => { if (e.key === 'Escape') closeEpicPanel(); });
+
+  function renderEpicPanel() {
+    const epics = buildEpics();
+    const allCount = allIssues.length;
+    const rows = [
+      `<button class="epic-row epic-row--all ${!epicFilter ? 'is-active' : ''}" data-epic="" type="button">
+         <div class="epic-row__main"><span class="epic-row__square"></span><span class="epic-row__name">Všechny epicy</span></div>
+         <span class="epic-row__count">${allCount}</span>
+       </button>`,
+      `<div class="epic-list__sep"></div>`,
+      ...epics.map(e => `
+        <button class="epic-row ${epicFilter === e.full ? 'is-active' : ''}" data-epic="${e.full}" type="button">
+          <div class="epic-row__main">
+            <div class="epic-row__line"><span class="epic-row__id mono">${e.id}</span></div>
+            <span class="epic-row__name">${e.name}</span>
+            <span class="epic-row__sub">${e.openCount} otevřených · ${e.count} celkem</span>
+          </div>
+          <span class="epic-row__count">${e.count}</span>
+        </button>`),
+    ].join('');
+
+    document.getElementById('epicList').innerHTML = rows;
+    document.querySelectorAll('#epicList .epic-row').forEach(btn => {
+      btn.addEventListener('click', () => {
+        epicFilter = btn.getAttribute('data-epic') || null;
+        currentPage = 1;
+        closeEpicPanel();
+        render();
+      });
+    });
+  }
+
+  // ── Bulk bar ─────────────────────────────────────────────────────────────
+
+  function bulkLabel(n) {
+    if (n === 1) return 'vybraná story';
+    if (n < 5)  return 'vybrané stories';
+    return 'vybraných stories';
+  }
+
+  function _selectedIssues() {
+    return allIssues.filter(s => selected.has(formatId(s.id)));
+  }
+
+  function _allSelectedNew() {
+    const issues = _selectedIssues();
+    return issues.length > 0 && issues.every(s => !s.story_status || s.story_status === 'new');
+  }
+
+  function _allSelectedCanImplement() {
+    const issues = _selectedIssues();
+    return issues.length > 0 && issues.every(s =>
+      (s.type === 'bug' && (!s.story_status || s.story_status === 'new')) ||
+      (s.type === 'story' && s.story_status === 'validated')
+    );
+  }
+
+  async function bulkImplementSelected() {
+    const btn = document.getElementById('btn-bulk-implement');
+    if (btn) btn.disabled = true;
+    const issues = _selectedIssues();
+    for (const issue of issues) {
+      try {
+        const res = await fetch('/api/implement', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ issue_number: issue.id }),
+        });
+        if (!res.ok) throw new Error((await res.json()).error || res.status);
+      } catch (e) {
+        console.warn('bulk implement failed for', issue.id, e);
+      }
+    }
+    selected.clear();
+    fetch('/api/issues').then(r => r.json()).then(d => { allIssues = d; render(); }).catch(() => render());
+  }
+
+  async function bulkSubmitSelected() {
+    const btn = document.getElementById('btn-bulk-submit');
+    if (btn) btn.disabled = true;
+    const issues = _selectedIssues();
+    for (const issue of issues) {
+      try {
+        const res = await fetch('/api/analyze', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ issue_number: issue.id, name: issue.title }),
+        });
+        if (!res.ok) throw new Error((await res.json()).error || res.status);
+      } catch (e) {
+        console.warn('bulk submit failed for', issue.id, e);
+      }
+    }
+    selected.clear();
+    fetch('/api/issues').then(r => r.json()).then(d => { allIssues = d; render(); }).catch(() => render());
+  }
+
+  function renderBulkBar(count) {
+    const allNew = _allSelectedNew();
+    return `<div class="bulk-bar">
+      <div class="bulk-bar__left">
+        <span class="bulk-bar__count">${count}</span>
+        <span class="bulk-bar__label">${bulkLabel(count)}</span>
+        <button class="bulk-bar__clear" id="btn-clear-selection" type="button">Zrušit výběr</button>
+      </div>
+      <div class="bulk-bar__right">
+        <button class="tf-btn tf-btn-primary" type="button" id="btn-bulk-submit" ${allNew ? '' : 'disabled'} style="display:inline-flex;align-items:center;gap:6px;padding:5px 10px;font-size:12px;background:oklch(52% 0.18 280);border-color:oklch(52% 0.18 280)">
+          <svg width="12" height="12" viewBox="0 0 14 14" fill="none"><path d="M2 7 L6 11 L12 4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          Odeslat týmu k validaci
+        </button>
+        <button class="tf-btn tf-btn-primary" type="button" id="btn-bulk-implement" ${_allSelectedCanImplement() ? '' : 'disabled'} style="display:inline-flex;align-items:center;gap:6px;padding:5px 10px;font-size:12px;background:oklch(52% 0.16 150);border-color:oklch(52% 0.16 150)">
+          <svg width="12" height="12" viewBox="0 0 14 14" fill="none"><path d="M4 3 L11 7 L4 11 Z" fill="currentColor"/></svg>
+          Spustit vývoj
+        </button>
+      </div>
+    </div>`;
+  }
+
+  // ── Main render ──────────────────────────────────────────────────────────
+
+  function render() {
+    const filtered  = getVisible();
+    const pageCount = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+    currentPage = Math.min(currentPage, pageCount);
+    const start    = (currentPage - 1) * PAGE_SIZE;
+    const pageRows = filtered.slice(start, start + PAGE_SIZE).map(issue => {
+      const row = apiToRow(issue);
+      row.isSelected = selected.has(row.id);
+      return row;
+    });
+    const shownRange = filtered.length === 0 ? '0' : `${start + 1}–${Math.min(start + PAGE_SIZE, filtered.length)}`;
+
+    const epics = buildEpics();
+    const breadcrumb = epicFilter
+      ? `<a id="bcAll" style="cursor:pointer">Všechny epicy</a> <span style="color:var(--ink-4)">›</span> <span class="mono">${epicFilter.split(' ')[0]}</span>`
+      : `${epics.length} epic${epics.length !== 1 ? 'y' : ''}`;
+
+    const base = epicFilter ? allIssues.filter(s => s.epic === epicFilter) : allIssues;
+    const tabCounts = ['open','userstory','bugs','closed'].map(key => ({
+      key, label: TAB_LABELS[key], count: base.filter(TAB_FILTERS[key]).length,
+    }));
+
+    const qVerifyCount = base.filter(TAB_FILTERS['queue-verify']).length;
+    const qDevCount    = base.filter(TAB_FILTERS['queue-dev']).length;
+    const trailingHtml = [
+      renderQueueChip({
+        label: 'Fronta na validaci', count: qVerifyCount, key: 'queue-verify',
+        active: currentFilter === 'queue-verify',
+        activeBg: 'oklch(38% 0.13 280)',
+        idleBg: 'oklch(96% 0.03 280)', idleBorder: 'oklch(86% 0.04 280)', idleColor: 'oklch(38% 0.13 280)',
+        badgeBg: 'oklch(38% 0.13 280)',
+      }),
+      renderQueueChip({
+        label: 'Fronta na vývoj', count: qDevCount, key: 'queue-dev',
+        active: currentFilter === 'queue-dev',
+        activeBg: 'var(--accent)',
+        idleBg: 'var(--accent-2)', idleBorder: 'oklch(86% 0.04 290)', idleColor: 'var(--accent-ink)',
+        badgeBg: 'var(--accent)',
+      }),
+    ].join('');
+
+    const pageTitle = epicFilter ? (epics.find(e => e.full === epicFilter)?.name || epicFilter) : 'Všechny user stories';
+
+    const app = document.getElementById('app');
+    app.innerHTML = `
+      <div class="page__header" style="flex-direction:column;align-items:flex-start;gap:6px">
+        <div class="page__breadcrumb" id="breadcrumb">${breadcrumb}</div>
+        <div style="display:flex;align-items:center;gap:10px">
+          <button class="page__menu-btn" type="button" id="epicOpen" aria-label="Zobrazit epicy">
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+              <path d="M2 4 H12 M2 7 H12 M2 10 H12" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>
+            </svg>
+          </button>
+          <h1 class="page__title" style="margin:0">${pageTitle}</h1>
+        </div>
+      </div>
+    ` +
+      `<div id="list-controls">
+        <div id="bulk-bar-wrap" style="${selected.size > 0 ? '' : 'display:none'}">${renderBulkBar(selected.size)}</div>
+        <div id="filter-tabs-wrap" style="${selected.size > 0 ? 'display:none' : ''}">${renderFilterTabs({ tabs: tabCounts, active: currentFilter, trailing: trailingHtml })}</div>
+       </div>` +
+      renderTable({ bodyId: 'storiesBody' }) +
+      (filtered.length > PAGE_SIZE ? renderPagination({ current: currentPage, pageCount, pageSize: PAGE_SIZE, shownRange, totalCount: filtered.length }) : '');
+
+    document.getElementById('storiesBody').innerHTML = pageRows.map(renderTableRow).join('');
+
+    // Synchronizace výběru bez plného re-renderu (zabraňuje blikání)
+    function _syncSelection() {
+      const bbWrap = document.getElementById('bulk-bar-wrap');
+      const ftWrap = document.getElementById('filter-tabs-wrap');
+      if (selected.size > 0) {
+        if (bbWrap) {
+          bbWrap.style.display = '';
+          const cnt = bbWrap.querySelector('.bulk-bar__count');
+          const lbl = bbWrap.querySelector('.bulk-bar__label');
+          if (cnt) cnt.textContent = selected.size;
+          if (lbl) lbl.textContent = bulkLabel(selected.size);
+          const bs = bbWrap.querySelector('#btn-bulk-submit');
+          if (bs) bs.disabled = !_allSelectedNew();
+          const bd = bbWrap.querySelector('#btn-bulk-implement');
+          if (bd) bd.disabled = !_allSelectedCanImplement();
+        }
+        if (ftWrap) ftWrap.style.display = 'none';
+      } else {
+        if (bbWrap) bbWrap.style.display = 'none';
+        if (ftWrap) ftWrap.style.display = '';
+      }
+      // Aktualizace pozadí řádků
+      document.querySelectorAll('.table__row[data-id]').forEach(row => {
+        row.classList.toggle('table__row--selected', selected.has(row.dataset.id));
+      });
+    }
+
+    // Inicializace: správné zobrazení od začátku
+    _syncSelection();
+
+    // Checkbox select-all + row checkboxes
+    const selectAll = document.getElementById('selectAll');
+    if (selectAll) {
+      const visibleIds = pageRows.map(r => r.id);
+      const allChecked = visibleIds.length > 0 && visibleIds.every(id => selected.has(id));
+      const someChecked = visibleIds.some(id => selected.has(id));
+      selectAll.checked = allChecked;
+      selectAll.indeterminate = !allChecked && someChecked;
+      selectAll.addEventListener('change', () => {
+        if (selectAll.checked) { visibleIds.forEach(id => selected.add(id)); }
+        else { visibleIds.forEach(id => selected.delete(id)); }
+        document.querySelectorAll('.row-check').forEach(cb => { cb.checked = selectAll.checked; });
+        _syncSelection();
+      });
+    }
+    document.querySelectorAll('.row-check').forEach((cb, i) => {
+      const id = pageRows[i]?.id;
+      if (id) cb.checked = selected.has(id);
+      cb.addEventListener('change', () => {
+        if (cb.checked) { selected.add(id); } else { selected.delete(id); }
+        // Sync header checkbox
+        const visibleIds = pageRows.map(r => r.id);
+        const sa = document.getElementById('selectAll');
+        if (sa) {
+          const allChecked = visibleIds.every(id2 => selected.has(id2));
+          const someChecked = visibleIds.some(id2 => selected.has(id2));
+          sa.checked = allChecked; sa.indeterminate = !allChecked && someChecked;
+        }
+        _syncSelection();
+      });
+    });
+
+    // Klik na col-check container forwarding na checkbox uvnitř
+    document.querySelectorAll('.col-check').forEach(cell => {
+      cell.addEventListener('click', e => {
+        if (e.target.tagName !== 'INPUT') {
+          cell.querySelector('input[type="checkbox"]')?.click();
+        }
+      });
+    });
+
+    // Epic open btn (re-rendered inside app)
+    document.getElementById('epicOpen').addEventListener('click', openEpicPanel);
+
+    // Breadcrumb "Všechny epicy" link
+    const bcAll = document.getElementById('bcAll');
+    if (bcAll) bcAll.addEventListener('click', () => { epicFilter = null; currentPage = 1; render(); });
+
+    // Bulk bar — Odeslat týmu k validaci
+    document.getElementById('btn-bulk-submit')?.addEventListener('click', bulkSubmitSelected);
+
+    // Bulk bar — Spustit vývoj
+    document.getElementById('btn-bulk-implement')?.addEventListener('click', bulkImplementSelected);
+
+    // Bulk bar — Zrušit výběr
+    document.getElementById('btn-clear-selection')?.addEventListener('click', () => {
+      selected.clear();
+      document.querySelectorAll('.row-check').forEach(cb => { cb.checked = false; });
+      const sa = document.getElementById('selectAll');
+      if (sa) { sa.checked = false; sa.indeterminate = false; }
+      _syncSelection();
+    });
+
+    // Queue chip kliknutí (toggle — druhý klik vrátí na 'open')
+    document.querySelectorAll('.filters__trailing .queue-chip[data-filter]').forEach(chip => {
+      chip.addEventListener('click', () => {
+        const next = chip.dataset.filter;
+        currentFilter = currentFilter === next ? 'open' : next;
+        currentPage = 1; render();
+      });
+    });
+
+    // Tab kliknutí
+    document.querySelectorAll('.filters__tabs .tab').forEach(tab => {
+      tab.addEventListener('click', () => {
+        const next = tab.dataset.filter;
+        if (next === 'closed' && !closedLoaded) {
+          fetch('/api/issues?state=all')
+            .then(r => r.json())
+            .then(data => { allIssues = data; closedLoaded = true; currentFilter = next; currentPage = 1; render(); })
+            .catch(err => showError('Nepodařilo se načíst zavřené issues: ' + err));
+        } else {
+          currentFilter = next; currentPage = 1; render();
+        }
+      });
+    });
+
+    // Stránkování
+    document.querySelectorAll('.pagination__btn[data-page]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const p = parseInt(btn.dataset.page, 10);
+        if (!isNaN(p) && p >= 1 && p <= pageCount) { currentPage = p; render(); window.scrollTo({ top: 0, behavior: 'smooth' }); }
+      });
+    });
+  }
+
+  function showError(msg) {
+    const p = document.createElement('p');
+    p.style.cssText = 'color:var(--danger);padding:1rem';
+    p.textContent = msg;
+    const wrap = document.createElement('div');
+    wrap.className = 'page__header';
+    wrap.appendChild(p);
+    document.getElementById('app').replaceChildren(wrap);
+  }
+
+  fetch('/api/issues')
+    .then(res => { if (!res.ok) return res.json().then(j => Promise.reject(j.error || 'Chyba serveru')); return res.json(); })
+    .then(data => { allIssues = data; render(); })
+    .catch(err => showError('Nepodařilo se načíst stories: ' + err));
+</script>
+</body>
+</html>

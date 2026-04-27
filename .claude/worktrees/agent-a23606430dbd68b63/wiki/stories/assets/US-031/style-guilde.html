@@ -1,0 +1,999 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Nová user storka</title>
+<script src="https://unpkg.com/@lottiefiles/dotlottie-wc@0.9.10/dist/dotlottie-wc.js" type="module"></script>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f5f5f5; color: #1a1a1a; min-height: 100vh; padding: 2rem 1rem; }
+  .page { max-width: 1000px; margin: 0 auto; display: flex; flex-direction: column; gap: 8px; }
+  h1 { font-size: 18px; font-weight: 500; color: #1a1a1a; }
+  .page-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 8px; flex-wrap: wrap; }
+  .head-btns { display: flex; align-items: center; gap: 6px; }
+  .hbtn { display: inline-flex; align-items: center; gap: 5px; font-family: inherit; font-size: 12px; font-weight: 500; padding: 6px 13px; border-radius: 7px; cursor: pointer; border: none; transition: filter .12s, transform .1s, background .12s; white-space: nowrap; }
+  .hbtn:active { transform: scale(.97); }
+  .hbtn-primary { background: #7b1fa2; color: #fff; box-shadow: 0 1px 4px rgba(123,31,162,.25); }
+  .hbtn-primary:hover { filter: brightness(.92); }
+  .hbtn-outline { background: #fff; color: #7b1fa2; border: 1px solid #ce93d8; }
+  .hbtn-outline:hover { background: #f3e5f5; }
+  .hbtn-ghost { background: transparent; color: #555; border: 1px solid #e0e0e0; }
+  .hbtn-ghost:hover { background: #f5f5f5; }
+  .r1 { display: grid; grid-template-columns: 1fr; gap: 8px; }
+  .r-epic-role { display: grid; grid-template-columns: 1fr 280px; gap: 8px; }
+  .r-main { display: grid; grid-template-columns: 1fr 280px; gap: 12px; align-items: start; }
+  .form-col { display: flex; flex-direction: column; gap: 8px; }
+  .agent-col { display: flex; flex-direction: column; gap: 8px; }
+  .sec { font-size: 10px; font-weight: 500; color: #888; text-transform: uppercase; letter-spacing: .08em; padding: 2px 0; }
+  .card { background: #fff; border: 0.5px solid #e0e0e0; border-radius: 8px; padding: .65rem .9rem; display: flex; flex-direction: column; gap: 5px; transition: border-color .2s, background .2s; }
+  .card.filled { border-color: #4caf50; background: #f1f8f1; }
+  .card.filled .card-title { color: #2e7d32; }
+  .card.filled .hint { color: #2e7d32; opacity: .7; }
+  .card.error { border-color: #e53935; }
+  .card-head { display: flex; align-items: center; justify-content: space-between; }
+  .card-title { font-size: 11px; font-weight: 500; color: #555; display: flex; align-items: center; gap: 4px; transition: color .2s; }
+  .req-dot { width: 4px; height: 4px; border-radius: 50%; background: #e53935; flex-shrink: 0; }
+  .opt-dot { width: 4px; height: 4px; border-radius: 50%; background: #ccc; flex-shrink: 0; }
+  .si { font-size: 12px; min-width: 14px; text-align: right; }
+  .si.done { color: #4caf50; }
+  .si.err { color: #e53935; }
+  .hint { font-size: 11px; color: #888; line-height: 1.4; }
+  input[type="text"], select { width: 100%; font-family: inherit; font-size: 13px; padding: 6px 8px; border: 0.5px solid #e0e0e0; border-radius: 6px; background: #fff; color: #1a1a1a; outline: none; }
+  input[type="text"]:focus, select:focus { border-color: #1976d2; }
+  textarea { width: 100%; font-family: inherit; font-size: 13px; padding: 6px 8px; border: 0.5px solid #e0e0e0; border-radius: 6px; resize: none; overflow: hidden; min-height: 52px; line-height: 1.5; background: #fff; color: #1a1a1a; outline: none; }
+  textarea:focus { border-color: #1976d2; }
+  .chip-group { display: flex; flex-wrap: wrap; gap: 4px; }
+  .chip { font-size: 12px; padding: 3px 9px; border-radius: 20px; border: 0.5px solid #e0e0e0; background: #fff; color: #1a1a1a; cursor: pointer; user-select: none; transition: background .1s, border-color .1s, color .1s; }
+  .chip.active { background: #e3f2fd; color: #1565c0; border-color: #90caf9; }
+  .card.filled .chip.active { background: #e8f5e9; color: #2e7d32; border-color: #a5d6a7; }
+  .drop-zone { border: 0.5px dashed #ccc; border-radius: 6px; padding: .6rem; text-align: center; cursor: pointer; font-size: 11px; color: #888; transition: background .12s; display: flex; align-items: center; justify-content: center; gap: 6px; }
+  .drop-zone:hover { background: #f5f5f5; }
+  .drop-zone.has-file { border-style: solid; border-color: #4caf50; color: #2e7d32; }
+  .err-msg { font-size: 11px; color: #e53935; display: none; }
+  .card.error .err-msg { display: block; }
+  .checks { display: grid; grid-template-columns: 1fr 1fr; gap: 5px 12px; }
+  .check-row { display: flex; align-items: center; gap: 7px; cursor: pointer; }
+  .check-row input[type="checkbox"] { width: 14px; height: 14px; accent-color: #1976d2; cursor: pointer; flex-shrink: 0; }
+  .check-row span { font-size: 12px; color: #1a1a1a; }
+  .btn-row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 4px; }
+  .btn { width: 100%; padding: .65rem; font-family: inherit; font-size: 13px; font-weight: 500; border-radius: 8px; cursor: pointer; border: none; transition: filter .12s, transform .1s; }
+  .btn:active { transform: scale(.98); }
+  .btn-save { background: #1976d2; color: #fff; }
+  .btn-save:hover { filter: brightness(.9); }
+  .btn-send { background: #43a047; color: #fff; }
+  .btn-send:hover { filter: brightness(.9); }
+  .agent-card { background: #fff; border: 0.5px solid #e0e0e0; border-radius: 8px; padding: .65rem .9rem; display: flex; flex-direction: column; gap: 8px; }
+  .agent-msg { font-size: 12px; color: #555; padding: 6px 8px; background: #f5f5f5; border-radius: 6px; border-left: 2px solid #90caf9; line-height: 1.5; }
+  .agent-msg .tag { font-size: 10px; color: #888; margin-bottom: 2px; display: block; }
+  .agent-reply { display: flex; flex-direction: column; gap: 4px; }
+  .agent-reply textarea { font-size: 12px; min-height: 36px; }
+  .agent-reply button { align-self: flex-end; font-size: 11px; padding: 3px 10px; border-radius: 6px; border: 0.5px solid #e0e0e0; background: #fff; cursor: pointer; color: #1a1a1a; font-family: inherit; }
+  .agent-reply button:hover { background: #f5f5f5; }
+  .agent-q-wrap { display: flex; flex-direction: column; gap: 5px; padding-bottom: 10px; border-bottom: 0.5px solid #e0e0e0; }
+  .agent-q-wrap:last-child { border-bottom: none; padding-bottom: 0; }
+  .empty-agent { font-size: 12px; color: #aaa; text-align: center; padding: .75rem 0; }
+  .manifesto-box { background: #f0effe; border: 0.5px solid #c5c0f0; color: #3C3489; border-radius: 8px; padding: .75rem .9rem; font-size: 12px; line-height: 1.7; font-weight: 500; letter-spacing: .01em; }
+
+  /* field hints — tooltip on ? icon */
+  .tip-wrap { position: relative; display: inline-flex; align-items: center; margin-left: 4px; }
+  .tip-icon { width: 13px; height: 13px; border-radius: 50%; border: 0.5px solid #bbb; color: #999; font-size: 9px; font-weight: 500; display: inline-flex; align-items: center; justify-content: center; cursor: default; line-height: 1; font-style: normal; flex-shrink: 0; }
+  .tip-icon:hover { border-color: #7b1fa2; color: #7b1fa2; }
+  .tip-box { display: none; position: absolute; left: 0; top: calc(100% + 5px); width: 260px; background: #fff; border: 0.5px solid #e0e0e0; border-radius: 8px; padding: 10px 12px; font-size: 11px; color: #555; line-height: 1.6; z-index: 50; box-shadow: 0 4px 16px rgba(0,0,0,.08); }
+  .tip-wrap:hover .tip-box { display: block; }
+  .tip-box strong { font-weight: 500; color: #1a1a1a; display: block; margin-bottom: 5px; }
+  .tip-box ul { padding-left: 14px; margin: 4px 0 0; }
+  .tip-box li { margin-bottom: 3px; }
+  .tip-box .ok { color: #2e7d32; }
+  .tip-box .no { color: #c62828; }
+
+
+  .status-bar { display: none; align-items: center; gap: 10px; padding: 10px 16px; border-radius: 10px; border: 0.5px solid; font-size: 13px; line-height: 1.4; margin-bottom: 4px; animation: slideDown .3s cubic-bezier(.34,1.4,.64,1); }
+  .status-bar.visible { display: flex; }
+  @keyframes slideDown { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: translateY(0); } }
+  .status-bar.saving { background: #e3f2fd; border-color: #90caf9; color: #1565c0; }
+  .status-bar.success { background: #e8f5e9; border-color: #a5d6a7; color: #1b5e20; }
+  .status-bar.error { background: #ffebee; border-color: #ef9a9a; color: #b71c1c; }
+  .status-icon { flex-shrink: 0; display: flex; align-items: center; justify-content: center; }
+  .status-lottie { width: 32px; height: 32px; display: block; }
+  .status-body { display: flex; flex-direction: column; gap: 1px; flex: 1; }
+  .status-title { font-weight: 500; font-size: 13px; }
+  .status-sub { font-size: 12px; opacity: .8; }
+  .status-link { font-size: 12px; font-weight: 500; color: #1565c0; text-decoration: none; margin-top: 2px; display: inline-block; }
+  .status-link:hover { text-decoration: underline; }
+  .status-right { margin-left: auto; flex-shrink: 0; }
+  .status-close { background: none; border: none; cursor: pointer; font-size: 18px; line-height: 1; opacity: .5; color: inherit; padding: 0; }
+  .status-close:hover { opacity: .9; }
+  .check-circle, .x-circle { width: 22px; height: 22px; }
+  .check-circle circle, .x-circle circle { stroke-width: 2; fill: none; stroke-dasharray: 60; stroke-dashoffset: 60; animation: drawC .4s ease forwards; }
+  .check-circle circle { stroke: #2e7d32; } .x-circle circle { stroke: #c62828; }
+  .check-circle path { stroke: #2e7d32; stroke-width: 2; fill: none; stroke-linecap: round; stroke-linejoin: round; stroke-dasharray: 20; stroke-dashoffset: 20; animation: drawC .3s ease .35s forwards; }
+  .x-circle line { stroke: #c62828; stroke-width: 2; stroke-linecap: round; stroke-dasharray: 14; stroke-dashoffset: 14; }
+  .x-circle .l1 { animation: drawC .25s ease .35s forwards; } .x-circle .l2 { animation: drawC .25s ease .5s forwards; }
+  @keyframes drawC { to { stroke-dashoffset: 0; } }
+  @media (max-width: 700px) {
+    .r-epic-role, .r-main { grid-template-columns: 1fr; }
+    .agent-col { order: -1; }
+  }
+
+  /* ── Bug report modal ── */
+  .bug-modal { background: #fff; border: 0.5px solid #e0e0e0; border-radius: 10px; width: 100%; max-width: 560px; display: flex; flex-direction: column; overflow: hidden; animation: slideUp .2s cubic-bezier(.34,1.3,.64,1); }
+  .bug-topbar { padding: 11px 14px; border-bottom: 0.5px solid #e0e0e0; display: flex; align-items: center; gap: 8px; background: #fafafa; flex-shrink: 0; }
+  .bug-topbar-title { font-size: 13px; font-weight: 500; color: #1a1a1a; flex: 1; }
+  .bug-body { padding: 14px; display: flex; flex-direction: column; gap: 10px; overflow-y: auto; max-height: calc(80vh - 100px); }
+  .bug-field { display: flex; flex-direction: column; gap: 4px; }
+  .bug-label { font-size: 11px; font-weight: 500; color: #555; display: flex; align-items: center; gap: 4px; }
+  .bug-label .req-dot { width: 4px; height: 4px; border-radius: 50%; background: #e53935; flex-shrink: 0; }
+  .bug-hint { font-size: 11px; color: #888; line-height: 1.4; }
+  .bug-field input[type="text"] { width: 100%; font-family: inherit; font-size: 13px; padding: 6px 8px; border: 0.5px solid #e0e0e0; border-radius: 6px; background: #fff; color: #1a1a1a; outline: none; }
+  .bug-field input[type="text"]:focus { border-color: #D85A30; }
+  .bug-field textarea { width: 100%; font-family: inherit; font-size: 13px; padding: 6px 8px; border: 0.5px solid #e0e0e0; border-radius: 6px; resize: none; overflow: hidden; min-height: 52px; line-height: 1.5; background: #fff; color: #1a1a1a; outline: none; }
+  .bug-field textarea:focus { border-color: #D85A30; }
+  .bug-field.error input, .bug-field.error textarea { border-color: #e53935; }
+  .bug-err { font-size: 11px; color: #e53935; display: none; }
+  .bug-field.error .bug-err { display: block; }
+  .bug-footer { padding: 10px 14px; border-top: 0.5px solid #e0e0e0; background: #fafafa; flex-shrink: 0; display: flex; justify-content: flex-end; gap: 7px; }
+  .bug-btn-cancel { font-family: inherit; font-size: 12px; font-weight: 500; padding: 6px 14px; border-radius: 7px; border: 0.5px solid #e0e0e0; background: #fff; color: #555; cursor: pointer; }
+  .bug-btn-cancel:hover { background: #f5f5f5; }
+  .bug-btn-save { font-family: inherit; font-size: 12px; font-weight: 500; padding: 6px 14px; border-radius: 7px; border: none; background: #D85A30; color: #fff; cursor: pointer; transition: filter .12s; }
+  .bug-btn-save:hover { filter: brightness(.9); }
+  .bug-btn-save:active { transform: scale(.97); }
+  .modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.35); z-index: 100; align-items: flex-start; justify-content: center; padding: 2rem 1rem; }
+  .modal-overlay.open { display: flex; animation: fadeIn .15s ease; }
+  @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+  .gh-modal { background: #fff; border: 0.5px solid #e0e0e0; border-radius: 10px; width: 100%; max-width: 600px; max-height: 80vh; display: flex; flex-direction: column; overflow: hidden; animation: slideUp .2s cubic-bezier(.34,1.3,.64,1); }
+  @keyframes slideUp { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+  .gh-topbar { padding: 11px 14px; border-bottom: 0.5px solid #e0e0e0; display: flex; align-items: center; gap: 8px; background: #fafafa; flex-shrink: 0; }
+  .gh-topbar-title { font-size: 13px; font-weight: 500; color: #1a1a1a; flex: 1; }
+  .gh-repo-badge { font-size: 11px; color: #666; background: #f0f0f0; border: 0.5px solid #e0e0e0; border-radius: 5px; padding: 2px 7px; font-family: monospace; }
+  .gh-close { width: 24px; height: 24px; border-radius: 6px; border: 0.5px solid #e0e0e0; background: none; cursor: pointer; color: #888; font-size: 16px; display: flex; align-items: center; justify-content: center; line-height: 1; }
+  .gh-close:hover { background: #f5f5f5; }
+  .gh-filters { padding: 9px 14px; border-bottom: 0.5px solid #e0e0e0; display: flex; align-items: center; gap: 5px; flex-wrap: wrap; flex-shrink: 0; }
+  .gh-filter { font-size: 11px; font-weight: 500; padding: 3px 10px; border-radius: 20px; border: 0.5px solid #e0e0e0; cursor: pointer; background: none; font-family: inherit; color: #555; transition: all .1s; }
+  .gh-filter:hover { background: #f5f5f5; }
+  .gh-filter.active-all { background: #1a1a1a; color: #fff; border-color: #1a1a1a; }
+  .gh-filter.active-idea { background: #EEEDFE; color: #3C3489; border-color: #AFA9EC; }
+  .gh-filter.active-story { background: #E1F5EE; color: #085041; border-color: #5DCAA5; }
+  .gh-filter.active-bug { background: #FAECE7; color: #712B13; border-color: #F0997B; }
+  .gh-list { flex: 1; overflow-y: auto; padding: 5px 8px; }
+  .gh-item { display: flex; align-items: flex-start; gap: 9px; padding: 8px 9px; border-radius: 7px; cursor: pointer; border: 0.5px solid transparent; transition: background .1s, border-color .1s; margin-bottom: 2px; }
+  .gh-item:hover { background: #f8f8f8; border-color: #e8e8e8; }
+  .gh-item:active { background: #f0f0f0; }
+  .gh-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; margin-top: 5px; }
+  .gh-dot.idea { background: #7F77DD; }
+  .gh-dot.story { background: #1D9E75; }
+  .gh-dot.bug { background: #D85A30; }
+  .gh-item-body { flex: 1; min-width: 0; }
+  .gh-item-title { font-size: 13px; color: #1a1a1a; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; line-height: 1.4; }
+  .gh-item-meta { font-size: 11px; color: #888; display: flex; gap: 7px; margin-top: 2px; align-items: center; flex-wrap: wrap; }
+  .gh-badge { font-size: 10px; font-weight: 500; padding: 1px 6px; border-radius: 4px; border: 0.5px solid; }
+  .gh-badge.idea { background: #EEEDFE; color: #3C3489; border-color: #AFA9EC; }
+  .gh-badge.story { background: #E1F5EE; color: #085041; border-color: #5DCAA5; }
+  .gh-badge.bug { background: #FAECE7; color: #712B13; border-color: #F0997B; }
+  .gh-arrow { color: #ccc; font-size: 14px; flex-shrink: 0; margin-top: 3px; }
+  .gh-item:hover .gh-arrow { color: #888; }
+  .gh-empty { text-align: center; padding: 3rem 1rem; color: #aaa; font-size: 13px; }
+  .gh-footer { padding: 7px 14px; border-top: 0.5px solid #e0e0e0; font-size: 11px; color: #aaa; background: #fafafa; flex-shrink: 0; display: flex; align-items: center; gap: 8px; }
+  .gh-loading-dot { width: 6px; height: 6px; border-radius: 50%; background: #7b1fa2; animation: blink 1.2s ease-in-out infinite; }
+  @keyframes blink { 0%,100% { opacity: .3; } 50% { opacity: 1; } }
+  .skel-row { display: flex; align-items: center; gap: 9px; padding: 8px 9px; }
+  .skel { background: #ebebeb; border-radius: 4px; animation: skpulse 1.4s ease-in-out infinite; }
+  @keyframes skpulse { 0%,100% { opacity: .5; } 50% { opacity: 1; } }
+  .gh-notify { font-size: 11px; padding: 2px 8px; border-radius: 10px; background: #E1F5EE; color: #085041; border: 0.5px solid #5DCAA5; display: none; }
+  /* ── Style guide ── */
+  .sg-wrap { max-width: 1000px; margin: 48px auto 0; display: flex; flex-direction: column; gap: 0; border: 0.5px solid #e0e0e0; border-radius: 12px; overflow: hidden; background: #fff; }
+  .sg-header { padding: 16px 24px; background: #1a1a1a; display: flex; align-items: baseline; gap: 12px; }
+  .sg-title { font-size: 14px; font-weight: 500; color: #fff; }
+  .sg-sub { font-size: 11px; color: #888; }
+  .sg-section { padding: 20px 24px; border-bottom: 0.5px solid #f0f0f0; }
+  .sg-section:last-child { border-bottom: none; }
+  .sg-label { font-size: 10px; font-weight: 500; color: #aaa; text-transform: uppercase; letter-spacing: .08em; margin-bottom: 12px; }
+  .sg-sublabel { font-size: 10px; color: #bbb; text-transform: uppercase; letter-spacing: .06em; margin-bottom: 4px; }
+  .sg-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .sg-swatch { width: 80px; height: 56px; border-radius: 7px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; }
+  .sg-swatch span { font-size: 10px; color: #fff; font-weight: 500; font-family: monospace; }
+  .sg-swatch small { font-size: 9px; color: rgba(255,255,255,.7); }
+  .sg-swatch--light { border: 0.5px solid; }
+  .sg-dialog-preview { background: #f5f5f5; border-radius: 8px; padding: 20px; }
+
+  /* ── Storky timeline widget ── */
+  .story-widget { background: #fff; border: 0.5px solid #e0e0e0; border-radius: 10px; padding: 18px 22px 16px; display: flex; flex-direction: column; gap: 14px; }
+  .story-widget-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+  .story-widget-title { font-size: 12px; font-weight: 500; color: #555; display: flex; align-items: center; gap: 6px; }
+  .story-widget-id { font-size: 11px; color: #888; font-family: monospace; background: #f5f5f5; border: 0.5px solid #e0e0e0; border-radius: 4px; padding: 1px 6px; }
+
+  /* Timeline */
+  .story-timeline { position: relative; display: grid; grid-template-columns: repeat(6, 1fr); padding: 8px 0 0; }
+  .story-track { position: absolute; top: 14px; left: calc(100% / 12); right: calc(100% / 12); height: 2px; background: #e0e0e0; border-radius: 2px; z-index: 0; }
+  .story-track-fill { position: absolute; top: 0; left: 0; height: 100%; background: #43a047; border-radius: 2px; transition: width .4s cubic-bezier(.34,1.2,.64,1); }
+  .story-step { display: flex; flex-direction: column; align-items: center; gap: 8px; position: relative; z-index: 1; }
+  .story-dot { width: 12px; height: 12px; border-radius: 50%; background: #e0e0e0; border: 2px solid #fff; box-shadow: 0 0 0 0.5px #d0d0d0; transition: all .2s; }
+  .story-step.done .story-dot { background: #43a047; box-shadow: 0 0 0 0.5px #2e7d32; }
+  .story-step.current .story-dot { background: #1976d2; box-shadow: 0 0 0 0.5px #1565c0, 0 0 0 4px rgba(25,118,210,.18); animation: storyPulse 1.6s ease-in-out infinite; }
+  @keyframes storyPulse { 0%,100% { box-shadow: 0 0 0 0.5px #1565c0, 0 0 0 4px rgba(25,118,210,.18); } 50% { box-shadow: 0 0 0 0.5px #1565c0, 0 0 0 7px rgba(25,118,210,.05); } }
+  .story-label { font-size: 10px; font-weight: 500; letter-spacing: .08em; text-transform: uppercase; color: #bbb; transition: color .2s; }
+  .story-step.done .story-label { color: #2e7d32; }
+  .story-step.current .story-label { color: #1565c0; }
+
+  /* Status row inside widget */
+  .story-status { display: flex; align-items: center; gap: 10px; padding: 9px 12px; background: #f8f9fb; border: 0.5px solid #e6e8ec; border-radius: 8px; font-size: 12px; min-height: 38px; transition: background .2s, border-color .2s; }
+  .story-status.working { background: #e3f2fd; border-color: #90caf9; }
+  .story-status.done { background: #e8f5e9; border-color: #a5d6a7; }
+  .story-status-icon { flex-shrink: 0; width: 18px; height: 18px; display: flex; align-items: center; justify-content: center; }
+  .story-status-dots { display: inline-flex; gap: 3px; }
+  .story-status-dots span { width: 5px; height: 5px; border-radius: 50%; background: #1976d2; animation: storyDot 1.2s ease-in-out infinite; }
+  .story-status-dots span:nth-child(2) { animation-delay: .15s; }
+  .story-status-dots span:nth-child(3) { animation-delay: .3s; }
+  @keyframes storyDot { 0%,80%,100% { opacity: .3; transform: scale(.8); } 40% { opacity: 1; transform: scale(1); } }
+  .story-status-text { flex: 1; color: #1a1a1a; line-height: 1.4; }
+  .story-status-text .who { font-weight: 500; }
+  .story-status.working .story-status-text .who { color: #1565c0; }
+  .story-status.done .story-status-text .who { color: #1b5e20; }
+  .story-status-link { font-size: 11px; font-weight: 500; color: #1565c0; text-decoration: none; padding: 3px 9px; border-radius: 6px; border: 0.5px solid #90caf9; background: #fff; white-space: nowrap; transition: background .12s; font-family: monospace; }
+  .story-status-link:hover { background: #e3f2fd; }
+  .story-status.done .story-status-link { color: #1b5e20; border-color: #a5d6a7; }
+  .story-status.done .story-status-link:hover { background: #e8f5e9; }
+  .story-check-mini { width: 16px; height: 16px; border-radius: 50%; background: #43a047; display: flex; align-items: center; justify-content: center; }
+  .story-check-mini svg { width: 10px; height: 10px; stroke: #fff; stroke-width: 3; fill: none; stroke-linecap: round; stroke-linejoin: round; }
+
+  @media (max-width: 700px) {
+    .story-label { font-size: 9px; letter-spacing: .04em; }
+    .story-widget { padding: 14px 14px 12px; }
+  }
+</style>
+</head>
+<body>
+<div class="modal-overlay" id="ghOverlay" onclick="handleOverlayClick(event)">
+  <div class="gh-modal" id="ghModal">
+    <div class="gh-topbar">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="#555" style="flex-shrink:0"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0 0 24 12c0-6.63-5.37-12-12-12z"/></svg>
+      <span class="gh-topbar-title">Načíst z GitHubu</span>
+      <span class="gh-notify" id="ghNotify">Načteno ✓</span>
+      <span class="gh-repo-badge">raadvit/BuyLink</span>
+      <button class="gh-close" onclick="closeGhModal()">×</button>
+    </div>
+    <div class="gh-filters">
+      <button class="gh-filter active-all" id="gff-all" onclick="setFilter('all',this)">Vše</button>
+      <button class="gh-filter" id="gff-idea" onclick="setFilter('idea',this)">
+        <span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:#7F77DD;margin-right:3px;vertical-align:middle"></span>idea
+      </button>
+      <button class="gh-filter" id="gff-story" onclick="setFilter('story',this)">
+        <span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:#1D9E75;margin-right:3px;vertical-align:middle"></span>user story
+      </button>
+      <button class="gh-filter" id="gff-bug" onclick="setFilter('bug',this)">
+        <span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:#D85A30;margin-right:3px;vertical-align:middle"></span>bug
+      </button>
+    </div>
+    <div class="gh-list" id="ghList">
+      <div class="skel-row"><div class="skel" style="width:8px;height:8px;border-radius:50%"></div><div style="flex:1;display:flex;flex-direction:column;gap:5px"><div class="skel" style="height:13px;width:72%"></div><div class="skel" style="height:10px;width:42%"></div></div></div>
+      <div class="skel-row"><div class="skel" style="width:8px;height:8px;border-radius:50%"></div><div style="flex:1;display:flex;flex-direction:column;gap:5px"><div class="skel" style="height:13px;width:58%"></div><div class="skel" style="height:10px;width:36%"></div></div></div>
+      <div class="skel-row"><div class="skel" style="width:8px;height:8px;border-radius:50%"></div><div style="flex:1;display:flex;flex-direction:column;gap:5px"><div class="skel" style="height:13px;width:80%"></div><div class="skel" style="height:10px;width:48%"></div></div></div>
+    </div>
+    <div class="gh-footer">
+      <div class="gh-loading-dot" id="ghSpinner"></div>
+      <span id="ghCount">Načítám issues…</span>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="bugOverlay" onclick="handleBugOverlayClick(event)">
+  <div class="bug-modal">
+    <div class="bug-topbar">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#D85A30" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+      <span class="bug-topbar-title">Nahlásit bug</span>
+      <span class="gh-repo-badge">raadvit/BuyLink</span>
+      <button class="gh-close" onclick="closeBugModal()">×</button>
+    </div>
+    <div class="bug-body">
+      <div class="bug-field" id="bf-title">
+        <label class="bug-label"><span class="req-dot"></span>Název</label>
+        <input type="text" id="bug-title" placeholder="např. „Checkout padá při prázdném PSČ"">
+        <span class="bug-err">Název je povinný</span>
+      </div>
+      <div class="bug-field" id="bf-what">
+        <label class="bug-label"><span class="req-dot"></span>Co se stalo</label>
+        <textarea id="bug-what" oninput="autoGrow(this)" placeholder="Co aplikace udělala špatně?"></textarea>
+        <span class="bug-err">Povinné pole</span>
+      </div>
+      <div class="bug-field" id="bf-expected">
+        <label class="bug-label"><span class="req-dot"></span>Jaký byl očekávaný výsledek / detaily</label>
+        <textarea id="bug-expected" oninput="autoGrow(this)" placeholder="Co jsi očekával?"></textarea>
+        <span class="bug-err">Povinné pole</span>
+      </div>
+      <div class="bug-field" id="bf-steps">
+        <label class="bug-label"><span class="req-dot"></span>Kroky k reprodukci</label>
+        <div class="bug-hint">Číslo každého kroku na nový řádek, ať to jde snadno zopakovat.</div>
+        <textarea id="bug-steps" oninput="autoGrow(this)" placeholder="1. Přejdi na checkout&#10;2. Nechej PSČ prázdné&#10;3. Klikni Pokračovat"></textarea>
+        <span class="bug-err">Povinné pole</span>
+      </div>
+    </div>
+    <div class="bug-footer">
+      <button class="bug-btn-cancel" onclick="closeBugModal()">Zrušit</button>
+      <button class="bug-btn-save" onclick="saveBug()">Uložit bug</button>
+    </div>
+  </div>
+</div>
+
+<div class="page">
+  <div class="status-bar" id="statusBar"><div class="status-icon" id="statusIcon"></div><div class="status-body" id="statusBody"></div><div class="status-right" id="statusRight"></div></div>
+  <div class="page-head">
+    <h1>Feature request</h1>
+    <div class="head-btns">
+      <button class="hbtn hbtn-ghost" onclick="openIssueModal()">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        Načíst myšlenku
+      </button>
+      <button class="hbtn hbtn-ghost" style="color:#993C1D;border-color:#F0997B" onclick="openBugModal()">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+        Nahlásit bug
+      </button>
+      <button class="hbtn hbtn-outline" onclick="resetForm()">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        Nová story
+      </button>
+      <button class="hbtn hbtn-primary" onclick="createIdea()">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 8v4l3 3"/></svg>
+        Vytvořit myšlenku
+      </button>
+    </div>
+  </div>
+
+  <div class="r1">
+    <div class="card" id="c-name">
+      <div class="card-head">
+          <div class="card-title">
+            <span class="req-dot"></span>Název požadavku
+            <span class="tip-wrap"><i class="tip-icon">?</i><div class="tip-box"><strong>Jak psát dobrý název</strong>Stručný a konkrétní — hned jasné co se řeší. Začni akcí nebo výsledkem. Ideálně 5–10 slov.<ul><li class="ok">✓ „Uživatel může resetovat heslo e-mailem"</li><li class="ok">✓ „Přidání filtrování objednávek podle data"</li><li class="no">✗ „Heslo" · „Úprava stránky"</li></ul></div></span>
+          </div>
+          <span class="si" id="si-name"></span>
+        </div>
+      <input type="text" id="f-name" oninput="check('name')">
+      <div class="err-msg">Název je povinný</div>
+    </div>
+  </div>
+
+  <div class="r-main">
+    <div class="form-col">
+
+      <div class="card" id="c-why">
+        <div class="card-head"><div class="card-title"><span class="opt-dot"></span>Why / Business Goal / Desired outcome</div><span class="si" id="si-why"></span></div>
+        <div class="hint">Vysvětlete, proč je změna důležitá a jaký výsledek očekáváte.</div>
+        <textarea id="f-why" oninput="autoGrow(this);check('why')"></textarea>
+      </div>
+
+      <div class="card" id="c-upload">
+        <div class="card-head"><div class="card-title"><span class="opt-dot"></span>Attachment</div><span class="si" id="si-upload"></span></div>
+        <div class="hint">Screenshot z Figmy, obrázek procesu nebo místa, které se má upravit.</div>
+        <div class="drop-zone" id="dz" onclick="document.getElementById('f-file').click()" ondragover="event.preventDefault()" ondrop="handleDrop(event)">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+          <span id="dz-label">Nahrát nebo přetáhnout</span>
+        </div>
+        <input type="file" id="f-file" accept="image/*,.pdf" style="display:none" onchange="handleFile(this)">
+      </div>
+
+      <div class="card" id="c-what">
+        <div class="card-head">
+          <div class="card-title">
+            <span class="req-dot"></span>Co se zobrazuje
+            <span class="tip-wrap"><i class="tip-icon">?</i><div class="tip-box"><strong>Co sem patří</strong>Vše viditelné na obrazovce — pole, sekce, tlačítka, stavy, prázdné stavy, loading. Piš co uživatel vidí, ne proč to tam je.<ul><li class="ok">✓ „Formulář se 3 poli: jméno, e-mail, telefon"</li><li class="ok">✓ „Tabulka objednávek s pagination po 20"</li><li class="no">✗ „Stránka pro správu objednávek"</li></ul></div></span>
+          </div>
+          <span class="si" id="si-what"></span>
+        </div>
+        <div class="hint">Popište, jaké prvky budou na obrazovce viditelné uživateli.</div>
+        <textarea id="f-what" oninput="autoGrow(this);check('what')"></textarea>
+        <div class="err-msg">Povinné pole</div>
+      </div>
+
+      <div class="card" id="c-how">
+        <div class="card-head">
+          <div class="card-title">
+            <span class="req-dot"></span>Jak se to chová
+            <span class="tip-wrap"><i class="tip-icon">?</i><div class="tip-box"><strong>Co sem patří</strong>Co se stane po akci uživatele. Zahrň: kliknutí / hover / změna hodnoty, validace, podmíněná logika, přesměrování, uložení dat, error handling, práva rolí.<ul><li class="ok">✓ „Po kliknutí Uložit se formulář validuje"</li><li class="ok">✓ „Pokud e-mail není validní → chyba inline"</li><li class="ok">✓ „Pokud OK → data se uloží a zobrazí toast"</li></ul></div></span>
+          </div>
+          <span class="si" id="si-how"></span>
+        </div>
+        <div class="hint">Popište, co se má stát při interakci uživatele a jaká pravidla mají platit.</div>
+        <textarea id="f-how" oninput="autoGrow(this);check('how')"></textarea>
+        <div class="err-msg">Povinné pole</div>
+      </div>
+
+      <div class="card" id="c-scope">
+        <div class="card-head"><div class="card-title"><span class="opt-dot"></span>Rizikové situace / Nestandardní scénáře</div><span class="si" id="si-scope"></span></div>
+        <div class="hint">Uveďte výjimky, chybové stavy nebo situace, které je potřeba zohlednit.</div>
+        <textarea id="f-scope" oninput="autoGrow(this);check('scope')"></textarea>
+      </div>
+
+      <div class="card">
+        <div class="card-title"><span class="opt-dot"></span>Technické dopady</div>
+        <div class="hint">Označte, zda změna vyžaduje napojení na systémy nebo technické úpravy.</div>
+        <div class="checks">
+          <label class="check-row"><input type="checkbox"><span>Napojení na API</span></label>
+          <label class="check-row"><input type="checkbox"><span>Dopady na DB</span></label>
+          <label class="check-row"><input type="checkbox"><span>Triggeruje notifikace</span></label>
+          <label class="check-row"><input type="checkbox"><span>Security sensitive</span></label>
+        </div>
+      </div>
+
+      <div class="card" id="c-deps">
+        <div class="card-head">
+          <div class="card-title">
+            <span class="opt-dot"></span>Otevřené otázky / Blokery
+            <span class="tip-wrap"><i class="tip-icon">?</i><div class="tip-box"><strong>Co sem patří</strong>Věci které zatím nevíš nebo závisí na jiném týmu / issue. Agent je přidá jako otevřené otázky do výstupu.<ul><li class="ok">✓ „Čeká na design systém — ticket #34"</li><li class="ok">✓ „Nejasné jak se chová na mobilní síti"</li></ul></div></span>
+          </div>
+          <span class="si" id="si-deps"></span>
+        </div>
+        <div class="hint">Napište, co zatím není rozhodnuto nebo může bránit realizaci.</div>
+        <textarea id="f-deps" oninput="autoGrow(this);check('deps')"></textarea>
+      </div>
+
+      <div class="card" id="c-ac">
+        <div class="card-head">
+          <div class="card-title">
+            <span class="opt-dot"></span>Vlastní AC
+            <span class="tip-wrap"><i class="tip-icon">?</i><div class="tip-box"><strong>Vlastní acceptance criteria</strong>Nech prázdné — agent vygeneruje AC automaticky. Vyplň jen pokud máš specifické požadavky které agent nemůže odvodit z popisu.<ul><li class="ok">✓ „Musí projít penetračním testem"</li><li class="ok">✓ „Loadtime max 1,5 s na 3G"</li></ul></div></span>
+          </div>
+          <span class="si" id="si-ac"></span>
+        </div>
+        <div class="hint">Nech prázdné — agent vygeneruje.</div>
+        <textarea id="f-ac" oninput="autoGrow(this);check('ac')"></textarea>
+      </div>
+
+      <div class="btn-row">
+        <button class="btn btn-save" onclick="saveForm()">Uložit a vrátit se později</button>
+        <button class="btn btn-send" onclick="submitForm()">Odeslat do týmu k validaci</button>
+      </div>
+    </div>
+
+    <div class="agent-col">
+      <div class="card" id="c-epic">
+        <div class="card-head"><div class="card-title"><span class="req-dot"></span>Epic</div><span class="si" id="si-epic"></span></div>
+        <select id="f-epic" onchange="check('epic')">
+          <option value="">— vyber —</option>
+          <option>EP-01 BuyLink</option>
+          <option>EP-02 Administrace</option>
+          <option>EP-03 Platba</option>
+          <option>EP-04 Košík</option>
+          <option>EP-05 Doručení</option>
+          <option>EP-06 Escrow výplata</option>
+          <option>EP-07 Notifikace</option>
+          <option>EP-08 Customer service</option>
+        </select>
+        <div class="err-msg">Vyber epic</div>
+      </div>
+      <div class="card" id="c-role">
+        <div class="card-head"><div class="card-title"><span class="req-dot"></span>Role</div><span class="si" id="si-role"></span></div>
+        <div class="chip-group" id="roles">
+          <div class="chip" onclick="toggleChip(this,'role')">seller</div>
+          <div class="chip" onclick="toggleChip(this,'role')">buyer</div>
+          <div class="chip" onclick="toggleChip(this,'role')">admin</div>
+          <div class="chip" onclick="toggleChip(this,'role')">api</div>
+          <div class="chip" onclick="toggleChip(this,'role')">support</div>
+        </div>
+        <div class="err-msg">Vyber alespoň jednu roli</div>
+      </div>
+      <div class="manifesto-box">Story není dokument. Story je structured prompt pro delivery engine.</div>
+      <div class="sec">Dotazy agenta</div>
+      <div class="agent-card">
+        <div id="agent-msgs"><div class="empty-agent">
+          <dotlottie-wc id="agentLottie" style="width:90px;height:90px;display:block;margin:0 auto 4px" autoplay loop></dotlottie-wc>
+          <span>Zatím žádné dotazy</span>
+        </div></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="sg-wrap">
+  <div class="sg-header">
+    <span class="sg-title">Style guide</span>
+    <span class="sg-sub">BuyLink · feature request & bug tracker</span>
+  </div>
+
+  <!-- Colors -->
+  <div class="sg-section">
+    <div class="sg-label">Barvy</div>
+    <div class="sg-row" style="flex-wrap:wrap;gap:8px">
+      <div class="sg-swatch" style="background:#7b1fa2"><span>#7b1fa2</span><small>Primary</small></div>
+      <div class="sg-swatch" style="background:#D85A30"><span>#D85A30</span><small>Bug / Error</small></div>
+      <div class="sg-swatch" style="background:#1976d2"><span>#1976d2</span><small>Info / Save</small></div>
+      <div class="sg-swatch" style="background:#43a047"><span>#43a047</span><small>Success / Send</small></div>
+      <div class="sg-swatch" style="background:#3C3489"><span>#3C3489</span><small>Manifesto</small></div>
+      <div class="sg-swatch" style="background:#1a1a1a"><span>#1a1a1a</span><small>Text</small></div>
+      <div class="sg-swatch sg-swatch--light" style="background:#f0effe;border-color:#c5c0f0"><span style="color:#3C3489">#f0effe</span><small style="color:#3C3489">Manifesto bg</small></div>
+      <div class="sg-swatch sg-swatch--light" style="background:#f5f5f5;border-color:#e0e0e0"><span style="color:#888">#f5f5f5</span><small style="color:#888">Page bg</small></div>
+    </div>
+  </div>
+
+  <!-- Buttons -->
+  <div class="sg-section">
+    <div class="sg-label">Tlačítka</div>
+    <div class="sg-row">
+      <button class="hbtn hbtn-primary">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v4l3 3"/></svg>
+        Vytvořit myšlenku
+      </button>
+      <button class="hbtn hbtn-outline">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        Nová story
+      </button>
+      <button class="hbtn hbtn-ghost">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/></svg>
+        Načíst myšlenku
+      </button>
+      <button class="hbtn hbtn-ghost" style="color:#993C1D;border-color:#F0997B">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+        Nahlásit bug
+      </button>
+      <button class="btn btn-save" style="width:auto;padding:.45rem 1rem">Uložit</button>
+      <button class="btn btn-send" style="width:auto;padding:.45rem 1rem">Odeslat</button>
+      <button class="bug-btn-cancel">Zrušit</button>
+      <button class="bug-btn-save">Uložit bug</button>
+    </div>
+  </div>
+
+  <!-- Badges / chips -->
+  <div class="sg-section">
+    <div class="sg-label">Badgy a chipy</div>
+    <div class="sg-row" style="flex-wrap:wrap">
+      <span class="gh-badge idea">idea</span>
+      <span class="gh-badge story">user story</span>
+      <span class="gh-badge bug">bug</span>
+      <div class="chip-group" style="display:inline-flex">
+        <div class="chip">seller</div>
+        <div class="chip active">buyer</div>
+        <div class="chip">admin</div>
+        <div class="chip">api</div>
+        <div class="chip">support</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Form inputs -->
+  <div class="sg-section">
+    <div class="sg-label">Formulářové prvky</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+      <div style="display:flex;flex-direction:column;gap:6px">
+        <div class="sg-sublabel">Text input — výchozí</div>
+        <input type="text" placeholder="Název požadavku">
+      </div>
+      <div style="display:flex;flex-direction:column;gap:6px">
+        <div class="sg-sublabel">Text input — focus (modrý)</div>
+        <input type="text" value="Uživatel může resetovat heslo" style="border-color:#1976d2">
+      </div>
+      <div style="display:flex;flex-direction:column;gap:6px">
+        <div class="sg-sublabel">Text input — bug focus (oranžový)</div>
+        <input type="text" value="Checkout padá při prázdném PSČ" style="border-color:#D85A30">
+      </div>
+      <div style="display:flex;flex-direction:column;gap:6px">
+        <div class="sg-sublabel">Text input — error</div>
+        <input type="text" placeholder="Povinné pole" style="border-color:#e53935">
+        <span style="font-size:11px;color:#e53935">Název je povinný</span>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:6px">
+        <div class="sg-sublabel">Select</div>
+        <select><option>— vyber —</option><option>EP-01 BuyLink</option><option selected>EP-03 Platba</option></select>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:6px">
+        <div class="sg-sublabel">Textarea — výchozí</div>
+        <textarea style="min-height:60px" placeholder="Popište chování..."></textarea>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:6px">
+        <div class="sg-sublabel">Checkbox — výchozí</div>
+        <div class="checks">
+          <label class="check-row"><input type="checkbox"><span>Napojení na API</span></label>
+          <label class="check-row"><input type="checkbox" checked><span>Dopady na DB</span></label>
+          <label class="check-row"><input type="checkbox"><span>Triggeruje notifikace</span></label>
+          <label class="check-row"><input type="checkbox" checked><span>Security sensitive</span></label>
+        </div>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:6px">
+        <div class="sg-sublabel">Drop zone</div>
+        <div class="drop-zone">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+          Nahrát nebo přetáhnout
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Cards -->
+  <div class="sg-section">
+    <div class="sg-label">Karty</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">
+      <div class="card">
+        <div class="card-head"><div class="card-title"><span class="req-dot"></span>Výchozí karta</div><span class="si"></span></div>
+        <div class="hint">Popis pole nebo instrukce.</div>
+        <input type="text" placeholder="Hodnota">
+      </div>
+      <div class="card filled">
+        <div class="card-head"><div class="card-title"><span class="req-dot"></span>Vyplněná karta</div><span class="si done">✓</span></div>
+        <div class="hint">Pole bylo vyplněno.</div>
+        <input type="text" value="Uložená hodnota">
+      </div>
+      <div class="card error">
+        <div class="card-head"><div class="card-title"><span class="req-dot"></span>Chybová karta</div><span class="si err">!</span></div>
+        <input type="text" placeholder="">
+        <div class="err-msg">Toto pole je povinné</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Manifesto + sec label -->
+  <div class="sg-section">
+    <div class="sg-label">Ostatní prvky</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;align-items:start">
+      <div style="display:flex;flex-direction:column;gap:8px">
+        <div class="sg-sublabel">Manifesto box</div>
+        <div class="manifesto-box">Story není dokument. Story je structured prompt pro delivery engine.</div>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:8px">
+        <div class="sg-sublabel">Section label</div>
+        <div class="sec">Dotazy agenta</div>
+        <div class="sg-sublabel" style="margin-top:8px">Tooltip ikona ?</div>
+        <div style="display:flex;align-items:center;gap:6px;font-size:13px;color:#555">
+          Název požadavku
+          <span class="tip-wrap"><i class="tip-icon">?</i><div class="tip-box"><strong>Jak psát dobrý název</strong>Stručný a konkrétní, 5–10 slov.</div></span>
+        </div>
+        <div class="sg-sublabel" style="margin-top:8px">Req / opt dot</div>
+        <div style="display:flex;gap:12px;align-items:center;font-size:12px;color:#555">
+          <span style="display:flex;align-items:center;gap:4px"><span class="req-dot"></span>Povinné</span>
+          <span style="display:flex;align-items:center;gap:4px"><span class="opt-dot"></span>Volitelné</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Issues dialog preview -->
+  <div class="sg-section">
+    <div class="sg-label">Dialog — Načíst z GitHubu</div>
+    <div class="sg-dialog-preview">
+      <div class="gh-modal" style="max-width:100%;max-height:none;animation:none">
+        <div class="gh-topbar">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="#555" style="flex-shrink:0"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0 0 24 12c0-6.63-5.37-12-12-12z"/></svg>
+          <span class="gh-topbar-title">Načíst z GitHubu</span>
+          <span class="gh-repo-badge">raadvit/BuyLink</span>
+          <button class="gh-close">×</button>
+        </div>
+        <div class="gh-filters">
+          <button class="gh-filter active-all">Vše</button>
+          <button class="gh-filter"><span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:#7F77DD;margin-right:3px;vertical-align:middle"></span>idea</button>
+          <button class="gh-filter"><span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:#1D9E75;margin-right:3px;vertical-align:middle"></span>user story</button>
+          <button class="gh-filter"><span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:#D85A30;margin-right:3px;vertical-align:middle"></span>bug</button>
+        </div>
+        <div class="gh-list" style="max-height:none">
+          <div class="gh-item"><span class="gh-dot idea"></span><div class="gh-item-body"><div class="gh-item-title">#42 Personalizovaný doporučovací systém pro kupující</div><div class="gh-item-meta"><span class="gh-badge idea">idea</span><span>EP-01 BuyLink</span><span style="margin-left:auto">raadvit · 13. 4. 2026</span></div></div><span class="gh-arrow">›</span></div>
+          <div class="gh-item"><span class="gh-dot story"></span><div class="gh-item-body"><div class="gh-item-title">#27 Jako buyer chci vybrat AlzaBox při checkoutu</div><div class="gh-item-meta"><span class="gh-badge story">user story</span><span>EP-05 Doručení</span><span style="margin-left:auto">raadvit · 12. 4. 2026</span></div></div><span class="gh-arrow">›</span></div>
+          <div class="gh-item"><span class="gh-dot bug"></span><div class="gh-item-body"><div class="gh-item-title">#15 Checkout padá při prázdném PSČ na mobilním Chromu</div><div class="gh-item-meta"><span class="gh-badge bug">bug</span><span>EP-03 Platba</span><span style="margin-left:auto">jan.novak · 14. 4. 2026</span></div></div><span class="gh-arrow">›</span></div>
+        </div>
+        <div class="gh-footer"><span>3 issues</span></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Storky timeline widget -->
+  <div class="sg-section">
+    <div class="sg-label">Storky — timeline & live status</div>
+
+    <div class="story-widget" id="storyDemo">
+      <div class="story-widget-head">
+        <div class="story-widget-title">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#1D9E75" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+          Story #27 — Jako buyer chci vybrat AlzaBox při checkoutu
+        </div>
+      </div>
+
+      <!-- Timeline -->
+      <div class="story-timeline" id="storyTimeline">
+        <div class="story-track"><div class="story-track-fill" id="storyTrackFill" style="width:80%"></div></div>
+        <div class="story-step done"><div class="story-dot"></div><div class="story-label">Draft</div></div>
+        <div class="story-step done"><div class="story-dot"></div><div class="story-label">Konflikt</div></div>
+        <div class="story-step done"><div class="story-dot"></div><div class="story-label">Arch review</div></div>
+        <div class="story-step done"><div class="story-dot"></div><div class="story-label">Dev plán</div></div>
+        <div class="story-step current"><div class="story-dot"></div><div class="story-label">Vývoj</div></div>
+        <div class="story-step"><div class="story-dot"></div><div class="story-label">PR</div></div>
+        <div class="story-step"><div class="story-dot"></div><div class="story-label">Done</div></div>
+      </div>
+
+      <!-- Live status row (part of the same component) -->
+      <div class="story-status working" id="storyStatus">
+        <div class="story-status-icon">
+          <span class="story-status-dots"><span></span><span></span><span></span></span>
+        </div>
+        <div class="story-status-text">
+          <span class="who">Developer</span> pracuje na implementaci checkout flow…
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+</div>
+
+<script>
+const required = ['name','epic','role','what','how'];
+
+function autoGrow(el) { el.style.height = 'auto'; el.style.height = el.scrollHeight + 'px'; }
+
+function check(id) {
+  const card = document.getElementById('c-' + id);
+  const si = document.getElementById('si-' + id);
+  if (!card || !si) return;
+  let filled = false;
+  if (id === 'epic') filled = document.getElementById('f-epic').value !== '';
+  else if (id === 'role') filled = document.querySelectorAll('#roles .chip.active').length > 0;
+  else if (id === 'upload') filled = card.classList.contains('has-uploaded');
+  else { const f = document.getElementById('f-' + id); if (f) filled = f.value.trim().length > 0; }
+  card.classList.remove('filled', 'error');
+  if (filled) { card.classList.add('filled'); si.textContent = '✓'; si.className = 'si done'; }
+  else { si.textContent = ''; si.className = 'si'; }
+}
+
+function toggleChip(el, id) { el.classList.toggle('active'); check(id); }
+
+function handleFile(input) {
+  if (input.files.length) {
+    document.getElementById('dz').classList.add('has-file');
+    document.getElementById('dz-label').textContent = input.files[0].name;
+    const card = document.getElementById('c-upload');
+    card.classList.add('has-uploaded', 'filled');
+    document.getElementById('si-upload').textContent = '✓';
+    document.getElementById('si-upload').className = 'si done';
+  }
+}
+
+function handleDrop(e) {
+  e.preventDefault();
+  const f = e.dataTransfer.files;
+  if (f.length) { document.getElementById('f-file').files = f; handleFile(document.getElementById('f-file')); }
+}
+
+function validate() {
+  let valid = true;
+  required.forEach(id => {
+    const card = document.getElementById('c-' + id);
+    if (!card) return;
+    let filled = false;
+    if (id === 'epic') filled = document.getElementById('f-epic').value !== '';
+    else if (id === 'role') filled = document.querySelectorAll('#roles .chip.active').length > 0;
+    else { const f = document.getElementById('f-' + id); if (f) filled = f.value.trim().length > 0; }
+    if (!filled) {
+      card.classList.remove('filled'); card.classList.add('error');
+      const si = document.getElementById('si-' + id);
+      if (si) { si.textContent = '!'; si.className = 'si err'; }
+      valid = false;
+    }
+  });
+  return valid;
+}
+
+function showStatus(state, title, sub, link) {
+  const bar = document.getElementById('statusBar');
+  const icon = document.getElementById('statusIcon');
+  const body = document.getElementById('statusBody');
+  const right = document.getElementById('statusRight');
+  bar.className = 'status-bar visible ' + state;
+  bar.style.animation = 'none'; bar.offsetHeight; bar.style.animation = '';
+  if (state === 'saving') {
+    icon.innerHTML = `<dotlottie-wc class="status-lottie" src="https://lottie.host/d8c29521-3609-4b9c-ab89-6579fe3b7902/FEsnWGRIN8.lottie" autoplay loop></dotlottie-wc>`;
+    right.innerHTML = '';
+  } else if (state === 'success') {
+    icon.innerHTML = `<svg class="check-circle" viewBox="0 0 22 22"><circle cx="11" cy="11" r="9"/><path d="M7 11l3 3 5-5"/></svg>`;
+    right.innerHTML = `<button class="status-close" onclick="closeStatus()">×</button>`;
+  } else {
+    icon.innerHTML = `<svg class="x-circle" viewBox="0 0 22 22"><circle cx="11" cy="11" r="9"/><line class="l1" x1="7.5" y1="7.5" x2="14.5" y2="14.5"/><line class="l2" x1="14.5" y1="7.5" x2="7.5" y2="14.5"/></svg>`;
+    right.innerHTML = `<button class="status-close" onclick="closeStatus()">×</button>`;
+  }
+  let html = `<div class="status-title">${title}</div>`;
+  if (sub) html += `<div class="status-sub">${sub}</div>`;
+  if (link) html += `<a class="status-link" href="${link.url}" target="_blank">${link.label} ↗</a>`;
+  body.innerHTML = html;
+}
+
+function closeStatus() {
+  const bar = document.getElementById('statusBar');
+  bar.style.opacity = '0'; bar.style.transition = 'opacity .2s';
+  setTimeout(() => { bar.className = 'status-bar'; bar.style.opacity = ''''; bar.style.transition = ''''; }, 200);
+}
+
+function saveForm() {
+  const name = document.getElementById('f-name').value.trim() || 'Bez názvu';
+  showStatus('saving', 'Ukládám storku\u2026', 'Vytváříme GitHub issue, chvíli to potrvá');
+  setTimeout(() => {
+    showStatus('success', 'Draft uložen', null, {
+      url: 'https://github.com/raadvit/BuyLink/issues/25',
+      label: 'github.com/raadvit/BuyLink/issues/25'
+    });
+  }, 2000);
+}
+
+function submitForm() {
+  if (!validate()) return;
+  showStatus('saving', 'Odesílám do týmu\u2026', 'Vytváříme GitHub issue a notifikujeme tým');
+  setTimeout(() => {
+    showStatus('success', 'Odesláno k validaci', null, {
+      url: 'https://github.com/raadvit/BuyLink/issues/25',
+      label: 'github.com/raadvit/BuyLink/issues/25'
+    });
+  }, 2000);
+}
+
+function addAgentQuestion(tag, text) {
+  const msgs = document.getElementById('agent-msgs');
+  const empty = msgs.querySelector('.empty-agent');
+  if (empty) empty.remove();
+  const wrap = document.createElement('div');
+  wrap.className = 'agent-q-wrap';
+  wrap.innerHTML = `<div class="agent-msg"><span class="tag">${tag}</span>${text}</div><div class="agent-reply"><textarea oninput="autoGrow(this)"></textarea><button onclick="sendReply(this)">Odpovědět</button></div>`;
+  msgs.appendChild(wrap);
+}
+
+function sendReply(btn) {
+  const val = btn.previousElementSibling.value.trim();
+  if (!val) return;
+  alert('Odpověď odeslána: ' + val);
+}
+
+function createIdea() {
+  showStatus('saving', 'Ukládám myšlenku…', 'Zpracováváme a ukládáme vaši myšlenku');
+  setTimeout(() => {
+    showStatus('success', 'Myšlenka uložena', 'Myšlenka byla úspěšně vytvořena');
+  }, 1500);
+}
+
+function openIssueModal() {
+  openGhModal();
+}
+
+function resetForm() {
+  if (!confirm('Opravdu chceš vytvořit novou story? Neuložená data budou ztracena.')) return;
+  document.getElementById('f-name').value = '';
+  document.getElementById('f-epic').value = '';
+  document.querySelectorAll('.chip.active').forEach(c => c.classList.remove('active'));
+  document.querySelectorAll('textarea').forEach(t => { t.value = ''; t.style.height = ''; });
+  document.getElementById('dz').classList.remove('has-file');
+  document.getElementById('dz-label').textContent = 'Nahrát nebo přetáhnout';
+  ['name','epic','role','upload','what','how','scope','deps','ac'].forEach(id => {
+    const card = document.getElementById('c-' + id);
+    if (card) { card.classList.remove('filled','error'); }
+    const si = document.getElementById('si-' + id);
+    if (si) { si.textContent = ''; si.className = 'si'; }
+  });
+}
+
+const ISSUES = [
+  {id:42,type:'idea',title:'Personalizovaný doporučovací systém pro kupující',epic:'EP-01 BuyLink',author:'raadvit',date:'13. 4. 2026',body:'Systém by měl navrhovat produkty na základě předchozích nákupů a prohlíženého zboží.'},
+  {id:38,type:'idea',title:'Rychlé filtrování produktů pomocí hlasového vstupu',epic:'EP-04 Košík',author:'jan.novak',date:'10. 4. 2026',body:'Umožnit filtrovat produkty pomocí hlasových příkazů na mobilních zařízeních.'},
+  {id:35,type:'idea',title:'Dashboard prodejce s live statistikami',epic:'EP-02 Administrace',author:'raadvit',date:'7. 4. 2026',body:'Real-time přehled prodejů, konverzí a návratnosti zboží pro prodejce.'},
+  {id:31,type:'idea',title:'Automatické tagging produktů přes AI',epic:'EP-02 Administrace',author:'petra.k',date:'3. 4. 2026',body:'Při přidání produktu AI automaticky navrhne kategorie a tagy.'},
+  {id:29,type:'idea',title:'Notifikace při poklesu ceny sledovaného produktu',epic:'EP-07 Notifikace',author:'raadvit',date:'1. 4. 2026',body:'Kupující dostane push/email když sledovaný produkt zlevní.'},
+  {id:27,type:'story',title:'Jako buyer chci vybrat AlzaBox při checkoutu',epic:'EP-05 Doručení',author:'raadvit',date:'12. 4. 2026',body:'Při výběru doručení zobrazit mapu AlzaBoxů, umožnit výběr a uložit k objednávce.'},
+  {id:26,type:'story',title:'Jako seller chci nastavit automatické escrow pravidla',epic:'EP-06 Escrow výplata',author:'jan.novak',date:'9. 4. 2026',body:'Seller může definovat podmínky za kterých se escrow automaticky uvolní.'},
+  {id:24,type:'story',title:'Jako admin chci zobrazit seznam všech otevřených sporů',epic:'EP-08 Customer service',author:'petra.k',date:'6. 4. 2026',body:'Přehledná tabulka sporů s filtrováním dle stavu, epicu a přiřazeného agenta.'},
+  {id:22,type:'story',title:'Jako buyer chci sdílet košík s přítelem',epic:'EP-04 Košík',author:'raadvit',date:'4. 4. 2026',body:'Vygenerovat shareable link na košík, přítel může prohlížet a komentovat.'},
+  {id:20,type:'story',title:'Jako seller chci exportovat objednávky do CSV',epic:'EP-02 Administrace',author:'jan.novak',date:'2. 4. 2026',body:'Export s filtrem dle data, stavu objednávky a produktu.'},
+  {id:18,type:'story',title:'Jako buyer chci uložit platební metodu pro příště',epic:'EP-03 Platba',author:'raadvit',date:'31. 3. 2026',body:'Tokenizace karty, možnost mít více uložených metod, výchozí platbu.'},
+  {id:15,type:'bug',title:'Checkout padá při prázdném PSČ na mobilním Chromu',epic:'EP-03 Platba',author:'jan.novak',date:'14. 4. 2026',body:'Reprodukce: iOS Chrome 124, prázdné pole PSČ → klik Pokračovat → crash. Android OK.'},
+  {id:14,type:'bug',title:'Escrow timer se nezobrazuje správně v Safari',epic:'EP-06 Escrow výplata',author:'petra.k',date:'11. 4. 2026',body:'Timer ukazuje záporné hodnoty po vypršení v Safari 17. Chrome a Firefox OK.'},
+  {id:12,type:'bug',title:'Duplicitní notifikace při potvrzení objednávky',epic:'EP-07 Notifikace',author:'raadvit',date:'8. 4. 2026',body:'Kupující dostává 2x email při potvrzení. Pravděpodobně race condition v eventu.'},
+  {id:10,type:'bug',title:'Obrázky produktu se nenačtou při pomalém připojení',epic:'EP-01 BuyLink',author:'jan.novak',date:'5. 4. 2026',body:'Na 3G připojení obrázky zůstávají prázdné — chybí fallback/lazy loading.'},
+  {id:8,type:'bug',title:'Filtr ceny resetuje se po návratu z detailu',epic:'EP-04 Košík',author:'petra.k',date:'2. 4. 2026',body:'Po přechodu na detail produktu a zpět se filtr ceny vrátí na výchozí hodnotu.'},
+];
+
+let activeFilter = 'all';
+
+function openGhModal() {
+  document.getElementById('ghOverlay').classList.add('open');
+  document.body.style.overflow = 'hidden';
+  setTimeout(() => {
+    document.getElementById('ghSpinner').style.display = 'none';
+    renderIssues(ISSUES);
+  }, 700);
+}
+
+function closeGhModal() {
+  document.getElementById('ghOverlay').classList.remove('open');
+  document.body.style.overflow = '';
+}
+
+function handleOverlayClick(e) {
+  if (e.target === document.getElementById('ghOverlay')) closeGhModal();
+}
+
+function setFilter(type, btn) {
+  activeFilter = type;
+  document.querySelectorAll('.gh-filter').forEach(b => {
+    b.className = 'gh-filter';
+    if (b.id === 'gff-' + type) b.classList.add('active-' + type);
+  });
+  renderIssues(ISSUES.filter(i => activeFilter === 'all' || i.type === activeFilter));
+}
+
+function renderIssues(items) {
+  const list = document.getElementById('ghList');
+  const countEl = document.getElementById('ghCount');
+  countEl.textContent = items.length + ' issues';
+  if (!items.length) {
+    list.innerHTML = '<div class="gh-empty">Žádné issues neodpovídají filtru</div>';
+    return;
+  }
+  const labelMap = {idea:'idea', story:'user story', bug:'bug'};
+  list.innerHTML = items.map(i => `
+    <div class="gh-item" onclick="selectIssue(${i.id})">
+      <span class="gh-dot ${i.type}"></span>
+      <div class="gh-item-body">
+        <div class="gh-item-title">#${i.id} ${i.title}</div>
+        <div class="gh-item-meta">
+          <span class="gh-badge ${i.type}">${labelMap[i.type]}</span>
+          <span>${i.epic}</span>
+          <span style="margin-left:auto">${i.author} · ${i.date}</span>
+        </div>
+      </div>
+      <span class="gh-arrow">›</span>
+    </div>
+  `).join('');
+}
+
+function selectIssue(id) {
+  const issue = ISSUES.find(i => i.id === id);
+  if (!issue) return;
+  document.getElementById('f-name').value = issue.title;
+  const epicEl = document.getElementById('f-epic');
+  for (let opt of epicEl.options) {
+    if (opt.text === issue.epic || opt.text.startsWith(issue.epic.split(' ')[0])) {
+      epicEl.value = opt.value; break;
+    }
+  }
+  check('name'); check('epic');
+  closeGhModal();
+  showStatus('success', 'Issue #' + id + ' načteno', issue.title);
+}
+
+
+function openBugModal() {
+  document.getElementById('bugOverlay').classList.add('open');
+  document.body.style.overflow = 'hidden';
+}
+
+function closeBugModal() {
+  document.getElementById('bugOverlay').classList.remove('open');
+  document.body.style.overflow = '';
+}
+
+function handleBugOverlayClick(e) {
+  if (e.target === document.getElementById('bugOverlay')) closeBugModal();
+}
+
+function saveBug() {
+  const fields = [
+    ['bf-title', 'bug-title'],
+    ['bf-what',  'bug-what'],
+    ['bf-expected', 'bug-expected'],
+    ['bf-steps', 'bug-steps'],
+  ];
+  let valid = true;
+  fields.forEach(([fieldId, inputId]) => {
+    const field = document.getElementById(fieldId);
+    const input = document.getElementById(inputId);
+    if (!input.value.trim()) { field.classList.add('error'); valid = false; }
+    else field.classList.remove('error');
+  });
+  if (!valid) return;
+  closeBugModal();
+  showStatus('saving', 'Ukládám bug…', 'Vytváříme GitHub issue');
+  setTimeout(() => {
+    showStatus('success', 'Bug uložen', null, {
+      url: 'https://github.com/raadvit/BuyLink/issues',
+      label: 'github.com/raadvit/BuyLink/issues'
+    });
+    ['bug-title','bug-what','bug-expected','bug-steps','bug-details'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) { el.value = ''; el.style.height = ''; }
+    });
+  }, 1800);
+}
+
+addAgentQuestion('EP-05 AlzaBox', 'Výběr AlzaBoxu — otevírat v novém tabu nebo na stejné stránce?');
+addAgentQuestion('EP-02 Formulář', 'Jaká je maximální délka názvu a popisu produktu?');
+</script>
+</body>
+</html>

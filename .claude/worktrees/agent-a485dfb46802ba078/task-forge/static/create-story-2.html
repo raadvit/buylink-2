@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="cs">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Nová story — Task Forge</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;550;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="/static/style.css" />
+<style>
+  html, body { height: 100%; overflow: hidden; }
+</style>
+<script src="/static/nav.js"></script>
+</head>
+<body>
+<div class="cs-layout">
+  <div class="cs-body">
+    <!-- Form -->
+    <main class="cs-form-wrap">
+      <div class="cs-breadcrumb">
+        <a href="/list">Všechny user stories</a>
+        <span class="sep">/</span>
+        <span>Nová story</span>
+      </div>
+
+      <input class="cs-title-input" id="f-title" type="text" placeholder="Název story…" maxlength="120" />
+
+      <div class="cs-fields">
+        <div class="tf-field">
+          <label class="tf-label" for="f-why">Why / Business Goal <span class="req">*</span></label>
+          <div class="tf-help">Proč to děláme? Jaký je cíl a měřitelný výsledek. Cíl, ne řešení.</div>
+          <textarea class="tf-textarea" id="f-why" placeholder="Proč to děláme? Jaký je cíl a měřitelný výsledek?" rows="3"></textarea>
+        </div>
+
+        <div class="tf-field">
+          <label class="tf-label" for="f-epic">Epic <span class="req">*</span></label>
+          <input class="tf-input" id="f-epic" type="text" placeholder="EP-01 Task-forge" />
+        </div>
+
+        <div class="tf-field">
+          <label class="tf-label">Role <span class="req">*</span></label>
+          <div class="tf-chips" id="roles">
+            <button class="tf-chip" data-role="buyer" type="button">buyer</button>
+            <button class="tf-chip" data-role="seller" type="button">seller</button>
+            <button class="tf-chip on" data-role="admin" type="button">admin</button>
+            <button class="tf-chip" data-role="api" type="button">api</button>
+          </div>
+        </div>
+
+        <div class="tf-field">
+          <label class="tf-label" for="f-shows">Co se zobrazuje <span class="req">*</span></label>
+          <textarea class="tf-textarea" id="f-shows" placeholder="Co uživatel uvidí na obrazovce?" rows="3"></textarea>
+        </div>
+
+        <div class="tf-field">
+          <label class="tf-label" for="f-behaves">Jak se to chová <span class="req">*</span></label>
+          <textarea class="tf-textarea" id="f-behaves" placeholder="Interakce, stavy, validace…" rows="3"></textarea>
+        </div>
+
+        <div class="tf-field">
+          <label class="tf-label" for="f-risk">Rizikové situace / Nestandardní scénáře</label>
+          <textarea class="tf-textarea" id="f-risk" placeholder="Edge cases, prázdné stavy, chyby…" rows="2"></textarea>
+        </div>
+
+        <div class="tf-field">
+          <label class="tf-label">Technické dopady</label>
+          <div class="tf-checks">
+            <label class="tf-check"><input type="checkbox" name="tech" value="ext-api"> Napojení na API</label>
+            <label class="tf-check"><input type="checkbox" name="tech" value="db"> Dopady na DB</label>
+            <label class="tf-check"><input type="checkbox" name="tech" value="notif"> Triggeruje notifikace</label>
+            <label class="tf-check"><input type="checkbox" name="tech" value="security"> Security sensitive</label>
+          </div>
+        </div>
+
+        <div class="tf-field">
+          <label class="tf-label" for="f-open">Otevřené otázky / Blokery</label>
+          <textarea class="tf-textarea" id="f-open" placeholder="Co zatím není rozhodnuto nebo může bránit realizaci." rows="2"></textarea>
+        </div>
+
+        <div class="tf-field">
+          <label class="tf-label" for="f-ac">Akceptační kritéria</label>
+          <div class="tf-help">Nech prázdné — agent vygeneruje.</div>
+          <textarea class="tf-textarea" id="f-ac" placeholder="Seznam podmínek, které musí být splněny." rows="3"></textarea>
+        </div>
+      </div>
+
+      <div class="cs-footer">
+        <button class="tf-btn tf-btn-secondary" type="button" id="btn-save">Uložit na později</button>
+        <button class="tf-btn tf-btn-primary" type="button" id="btn-submit">Odeslat týmu k validaci →</button>
+      </div>
+    </main>
+
+    <!-- Agent panel -->
+    <aside class="cs-agent">
+      <div class="cs-agent-head">
+        <div class="cs-agent-avatar">F</div>
+        <div>
+          <div class="cs-agent-name">Forge Agent</div>
+          <div class="cs-agent-status">
+            <span class="cs-agent-status-dot"></span>
+            Aktivní · čeká na vyplnění
+          </div>
+        </div>
+      </div>
+      <div class="cs-chat" id="agentChat">
+        <div class="cs-msg agent">Ahoj 👋 Pomůžu ti převést potřebu PO do jasné, strukturované user story.</div>
+        <div class="cs-msg agent">Začni názvem požadavku — krátce, věcně. Ostatní pole vyplním nebo navrhnu.</div>
+      </div>
+      <div class="cs-chat-input-wrap">
+        <div class="cs-chat-input">
+          <input type="text" placeholder="Zeptej se agenta…" id="agentInput" />
+          <button class="tf-btn tf-btn-primary" style="padding:5px 10px;font-size:12px" type="button">Odeslat</button>
+        </div>
+        <div class="cs-quick-btns">
+          <button class="cs-quick-btn" type="button">Vygeneruj AC</button>
+          <button class="cs-quick-btn" type="button">Najdi duplicity</button>
+          <button class="cs-quick-btn" type="button">Odhadni složitost</button>
+        </div>
+      </div>
+    </aside>
+  </div>
+</div>
+
+<script>
+  initNav('create-story');
+
+  // Role chips toggle
+  document.querySelectorAll('#roles .tf-chip').forEach(chip => {
+    chip.addEventListener('click', () => chip.classList.toggle('on'));
+  });
+</script>
+</body>
+</html>

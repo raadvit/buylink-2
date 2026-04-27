@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Nová user storka</title>
+<link rel="stylesheet" href="/static/style.css">
+<script type="module" src="https://unpkg.com/@lottiefiles/dotlottie-wc@0.9.10/dist/dotlottie-wc.js"></script>
+</head>
+<body>
+
+<div id="status-bar" hidden>
+  <div class="status-icon" id="status-icon"></div>
+  <div class="status-body">
+    <div class="status-title" id="status-title"></div>
+    <div class="status-detail" id="status-detail" hidden></div>
+  </div>
+</div>
+
+<div class="page">
+  <div class="page-head">
+    <h1 onclick="newStory()" style="cursor:pointer">Feature request</h1>
+    <div class="head-btns">
+      <button class="hbtn hbtn-ghost" onclick="openIssueModal()">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        Načíst myšlenku
+      </button>
+      <button class="hbtn hbtn-bug" onclick="window.location='/bug/new'">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+        Nahlásit bug
+      </button>
+      <button class="hbtn hbtn-outline" onclick="newStory()">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        Nový požadavek
+      </button>
+      <button class="hbtn hbtn-primary" onclick="createIdea()">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 8v4l3 3"/></svg>
+        Vytvořit myšlenku
+      </button>
+    </div>
+  </div>
+
+  <div class="r1">
+    <div class="card" id="c-name">
+      <div class="card-head">
+        <div class="card-title">
+          <span class="req-dot"></span>Název požadavku
+          <span class="tip-wrap"><i class="tip-icon">?</i><div class="tip-box"><strong>Název požadavku</strong>Stručný a konkrétní název změny nebo nové funkce.<ul><li class="ok">✓ Přidání filtru objednávek podle data</li><li class="ok">✓ Reset hesla přes e-mail</li><li class="no">✗ Úprava webu</li><li class="no">✗ Potřebuji něco změnit</li></ul></div></span>
+        </div>
+        <span class="si" id="si-name"></span>
+      </div>
+      <input type="text" id="f-name" oninput="check('name')">
+      <div class="err-msg">Název je povinný</div>
+    </div>
+  </div>
+
+  <div id="story-timeline-wrap" hidden>
+    <div class="story-timeline-card" id="story-timeline-container"></div>
+  </div>
+
+  <div class="r-main">
+    <div class="form-col">
+
+      <div class="card" id="c-why">
+        <div class="card-head"><div class="card-title"><span class="opt-dot"></span>Why / Business Goal / Desired outcome<span class="tip-wrap"><i class="tip-icon">?</i><div class="tip-box"><strong>Why / Business Goal</strong>Vysvětlete proč změnu děláme, jaký problém řeší a jaký výsledek očekáváte.<ul><li class="ok">✓ Uživatelé nedokončují registraci, chceme zjednodušit formulář a zvýšit konverzi.</li><li class="ok">✓ Support řeší mnoho resetů hesla, cílem je samoobsluha uživatelů.</li><li class="no">✗ Protože to chceme.</li><li class="no">✗ Ať je to lepší.</li></ul></div></span></div><span class="si" id="si-why"></span></div>
+        <textarea id="f-why" oninput="autoGrow(this);check('why')"></textarea>
+      </div>
+
+      <div class="card" id="c-upload">
+        <div class="card-head"><div class="card-title"><span class="opt-dot"></span>Attachment<span class="tip-wrap"><i class="tip-icon">?</i><div class="tip-box"><strong>Attachment</strong>Screenshot z Figmy, obrázek procesu, existující obrazovku nebo inspiraci.<ul><li class="ok">✓ Soubor s HTML nebo daty</li><li class="ok">✓ Figma návrh nové komponenty</li><li class="no">✗ Náhodný obrázek bez souvislosti</li><li class="no">✗ Nic, pokud změna souvisí s UI a vizuál existuje</li></ul></div></span></div><span class="si" id="si-upload"></span></div>
+        <div class="drop-zone" id="dz" onclick="document.getElementById('f-file').click()" ondragover="event.preventDefault()" ondrop="handleDrop(event)">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+          <span id="dz-label">Nahrát nebo přetáhnout</span>
+        </div>
+        <input type="file" id="f-file" accept="image/*,.pdf,.js,.jsx,.ts,.tsx,.json,.xml,.html,.htm,.css,.scss,.txt,.csv,.md,.yaml,.yml,.toml,.sql,.py,.rb,.java,.kt,.swift,.go,.rs,.cpp,.c,.h,.sh,.lottie" multiple style="display:none" onchange="handleFile(this)">
+      </div>
+
+      <div class="card" id="c-what">
+        <div class="card-head">
+          <div class="card-title">
+            <span class="req-dot"></span>Co se zobrazuje
+            <span class="tip-wrap"><i class="tip-icon">?</i><div class="tip-box"><strong>Co se zobrazuje</strong>Popište, jaké prvky budou viditelné na obrazovce. Pole, tlačítka, tabulky, sekce, hlášky.<ul><li class="ok">✓ Pole E-mail, tlačítko Odeslat, potvrzovací zpráva po odeslání</li><li class="ok">✓ Tabulka objednávek, filtr data, stavový badge</li><li class="no">✗ Udělat nový formulář</li><li class="no">✗ Bude tam něco na klikání</li></ul></div></span>
+          </div>
+          <span class="si" id="si-what"></span>
+        </div>
+        <textarea id="f-what" oninput="autoGrow(this);check('what')"></textarea>
+        <div class="err-msg">Povinné pole</div>
+      </div>
+
+      <div class="card" id="c-how">
+        <div class="card-head">
+          <div class="card-title">
+            <span class="req-dot"></span>Jak se to chová
+            <span class="tip-wrap"><i class="tip-icon">?</i><div class="tip-box"><strong>Popište, jak se to chová</strong>Co se stane po kliknutí, zadání hodnoty nebo jiné akci uživatele. Validace, pravidla, stavy.<ul><li class="ok">✓ Po kliknutí na Odeslat se ověří e-mail a odešle reset link.</li><li class="ok">✓ Pokud pole zůstane prázdné, zobrazí se chyba.</li><li class="no">✗ Má to fungovat dobře.</li><li class="no">✗ Nějak to propojte.</li></ul></div></span>
+          </div>
+          <span class="si" id="si-how"></span>
+        </div>
+        <textarea id="f-how" oninput="autoGrow(this);check('how')"></textarea>
+        <div class="err-msg">Povinné pole</div>
+      </div>
+
+      <div class="card" id="c-scope">
+        <div class="card-head"><div class="card-title"><span class="opt-dot"></span>Rizikové situace / Nestandardní scénáře<span class="tip-wrap"><i class="tip-icon">?</i><div class="tip-box"><strong>Rizikové situace</strong>Uveďte výjimky, chybové stavy a méně běžné situace, které je potřeba řešit.<ul><li class="ok">✓ Uživatel zadá neexistující e-mail.</li><li class="ok">✓ API neodpoví do 10 sekund.</li><li class="ok">✓ Uživatel klikne 3× rychle po sobě.</li><li class="no">✗ Nic mě nenapadá.</li><li class="no">✗ Bez chyb.</li></ul></div></span></div><span class="si" id="si-scope"></span></div>
+        <textarea id="f-scope" oninput="autoGrow(this);check('scope')"></textarea>
+      </div>
+
+      <div class="card">
+        <div class="card-title"><span class="opt-dot"></span>Technické dopady<span class="tip-wrap"><i class="tip-icon">?</i><div class="tip-box"><strong>Technické dopady</strong>Označte, zda změna vyžaduje technické zásahy nebo integrace.<ul><li class="ok">✓ Napojení na API při načtení dat</li><li class="ok">✓ Triggeruje e-mail notifikaci</li><li class="no">✗ Zaškrtnuto vše bez rozmyslu</li><li class="no">✗ Nevyplněno u změny, která evidentně pracuje s daty</li></ul></div></span></div>
+        <div class="checks">
+          <label class="check-row"><input type="checkbox" id="f-flag-ext-api"><span>Napojení na API</span></label>
+          <label class="check-row"><input type="checkbox" id="f-flag-db"><span>Dopady na DB</span></label>
+          <label class="check-row"><input type="checkbox" id="f-flag-notif"><span>Triggeruje notifikace</span></label>
+          <label class="check-row"><input type="checkbox" id="f-flag-security"><span>Security sensitive</span></label>
+        </div>
+      </div>
+
+      <div class="card" id="c-deps">
+        <div class="card-head">
+          <div class="card-title">
+            <span class="opt-dot"></span>Otevřené otázky / Blokery
+            <span class="tip-wrap"><i class="tip-icon">?</i><div class="tip-box"><strong>Otevřené otázky / Blokery</strong>Napište, co ještě není rozhodnuto, chybí nebo může blokovat realizaci.<ul><li class="ok">✓ Čekáme na finální texty od marketingu.</li><li class="ok">✓ Není potvrzen endpoint od dodavatele API.</li><li class="ok">✓ Chybí design z Figmy.</li><li class="no">✗ Nevím.</li><li class="no">✗ Nic, když víte, že něco chybí.</li></ul></div></span>
+          </div>
+          <span class="si" id="si-deps"></span>
+        </div>
+        <div class="hint">Co zatím není rozhodnuto nebo může bránit realizaci.</div>
+        <textarea id="f-deps" oninput="autoGrow(this);check('deps')"></textarea>
+      </div>
+
+      <div class="card" id="c-ac">
+        <div class="card-head">
+          <div class="card-title">
+            <span class="opt-dot"></span>Vlastní AC
+            <span class="tip-wrap"><i class="tip-icon">?</i><div class="tip-box"><strong>Vlastní AC</strong>Konkrétní podmínky, které musí být splněny, aby bylo zadání hotové. Pokud nevyplníte, AI je navrhne.<ul><li class="ok">✓ Formulář nejde odeslat prázdný.</li><li class="ok">✓ Po úspěšném odeslání se zobrazí potvrzení.</li><li class="ok">✓ Funguje na mobilu i desktopu.</li><li class="no">✗ Musí to být dobré.</li><li class="no">✗ Udělejte to správně.</li></ul></div></span>
+          </div>
+          <span class="si" id="si-ac"></span>
+        </div>
+        <div class="hint">Nech prázdné — agent vygeneruje.</div>
+        <textarea id="f-ac" oninput="autoGrow(this);check('ac')"></textarea>
+      </div>
+
+      <div class="btn-row" id="btn-row-main">
+        <button class="btn btn-save" onclick="saveForm()">Uložit na později</button>
+        <button class="btn btn-send" onclick="submitForm()">Odeslat týmu k validaci</button>
+      </div>
+      <div class="btn-row btn-row-saved" id="btn-row-saved" hidden>
+        <button class="btn btn-update" onclick="updateDraft()">Uložit</button>
+        <button class="btn btn-send-saved" onclick="submitSaved()">Odeslat týmu k validaci</button>
+      </div>
+
+      <div id="preview-section" hidden>
+        <div class="preview-box">
+          <div class="preview-title">Náhled user story</div>
+          <pre id="preview-content"></pre>
+          <div class="btn-row">
+            <button class="btn btn-confirm" onclick="confirmPreview()">Potvrdit a vytvořit issue</button>
+          </div>
+        </div>
+      </div>
+
+      <div id="done-section" hidden>
+        <div class="done-banner">
+          <div class="done-title">Story byla vytvořena</div>
+          <div id="done-content"></div>
+        </div>
+      </div>
+
+    </div>
+
+    <div class="agent-col">
+      <div class="card" id="c-epic">
+        <div class="card-head"><div class="card-title"><span class="req-dot"></span>Epic</div><span class="si" id="si-epic"></span></div>
+        <select id="f-epic" onchange="check('epic')">
+          <option value="">— vyber —</option>
+          <option>EP-01 Task-forge</option>
+          <option>EP-02 Zákazník</option>
+          <option>EP-03 Rezervace</option>
+          <option>EP-04 Objednávky</option>
+          <option>EP-05 Notifikace</option>
+        </select>
+        <div class="err-msg">Vyber epic</div>
+      </div>
+      <div class="card" id="c-role">
+        <div class="card-head"><div class="card-title"><span class="req-dot"></span>Role</div><span class="si" id="si-role"></span></div>
+        <div class="chip-group" id="roles">
+          <div class="chip" onclick="toggleChip(this,'role')">seller</div>
+          <div class="chip" onclick="toggleChip(this,'role')">buyer</div>
+          <div class="chip" onclick="toggleChip(this,'role')">admin</div>
+          <div class="chip" onclick="toggleChip(this,'role')">api</div>
+          <div class="chip" onclick="toggleChip(this,'role')">support</div>
+        </div>
+        <div class="err-msg">Vyber alespoň jednu roli</div>
+      </div>
+      <div class="eur-box" id="eur-box">
+        <span class="eur-label">Kurz EUR</span>
+        <span class="eur-value" id="eur-value">Načítám…</span>
+      </div>
+      <div class="info-box">Agenti pomohou převést potřebu PO do jasné, strukturované user story.</div>
+      <div class="sec">Dotazy agenta</div>
+      <div class="agent-card">
+        <div id="agent-msgs">
+          <div class="cat-waiting" id="cat-placeholder">
+            <dotlottie-wc src="/static/animations/cat.lottie" autoplay loop style="width:160px;height:160px"></dotlottie-wc>
+            <div class="cat-waiting-label">Zatím žádné dotazy</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="ghOverlay" onclick="handleOverlayClick(event)">
+  <div class="gh-modal">
+    <div class="gh-topbar">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="#555" style="flex-shrink:0"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0 0 24 12c0-6.63-5.37-12-12-12z"/></svg>
+      <span class="gh-topbar-title">Načíst z GitHubu</span>
+      <span class="gh-repo-badge">raadvit/BuyLink</span>
+      <button class="gh-close" onclick="closeGhModal()">×</button>
+    </div>
+    <div class="gh-filters">
+      <button class="gh-filter active-all" id="gff-all" onclick="setGhFilter('all',this)">Vše</button>
+      <button class="gh-filter" id="gff-idea" onclick="setGhFilter('idea',this)"><span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:#7F77DD;margin-right:3px;vertical-align:middle"></span>idea</button>
+      <button class="gh-filter" id="gff-story" onclick="setGhFilter('story',this)"><span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:#1D9E75;margin-right:3px;vertical-align:middle"></span>user story</button>
+      <button class="gh-filter" id="gff-bug" onclick="setGhFilter('bug',this)"><span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:#D85A30;margin-right:3px;vertical-align:middle"></span>bug</button>
+      <div class="filter-sep"></div>
+      <button class="gh-filter" id="gff-ready" onclick="setReadyFilter(this)" aria-pressed="false">&#10003; Ready for testing</button>
+    </div>
+    <div class="gh-list" id="ghList">
+      <div class="skel-row"><div class="skel" style="width:8px;height:8px;border-radius:50%"></div><div class="skel" style="flex:1;height:13px"></div></div>
+      <div class="skel-row"><div class="skel" style="width:8px;height:8px;border-radius:50%"></div><div class="skel" style="flex:1;height:13px"></div></div>
+      <div class="skel-row"><div class="skel" style="width:8px;height:8px;border-radius:50%"></div><div class="skel" style="flex:1;height:13px"></div></div>
+    </div>
+    <div class="gh-footer" id="ghFooter">Načítám…</div>
+  </div>
+</div>
+
+<script src="/static/shared.js?v=202604252502" defer></script>
+<script src="/static/app.js?v=202604252502" defer></script>
+</body>
+</html>

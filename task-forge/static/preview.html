@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="cs">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Preview — Task forge</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;550;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+<!-- CSS přímo ze style guide — žádná synchronizace -->
+<link rel="stylesheet" href="/style-guide/styles.css" />
+</head>
+<body>
+
+<script src="/static/nav.js"></script>
+
+<main class="page" id="app"></main>
+
+<script src="/static/components.js"></script>
+<script>
+  // Nav
+  initNav('list');
+
+  // Data (stejná jako style guide)
+  const STORIES = [
+    { id: 'TF-419', title: 'Vyřešit konflikt CTA barev v checkout flow', epic: 'EP-01', status: 'Konflikt',    cost: 1240, updated: '24. 4. 2026', conflicts: 1, agentState: 'reviewing', isBug: false },
+    { id: 'TF-418', title: 'Sjednotit CTA barvy napříč produktem',        epic: 'EP-01', status: 'Dev plán',   cost: 2080, updated: '24. 4. 2026', conflicts: 0, agentState: null,        isBug: false },
+    { id: 'TF-417', title: 'Onboarding pro nové sellery — krok 2',        epic: 'EP-02', status: 'Draft',      cost: null, updated: '24. 4. 2026', conflicts: 0, agentState: 'drafting',  isBug: false },
+    { id: 'TF-416', title: 'Prázdný stav reportu po filtraci',            epic: 'EP-04', status: 'Arch review',cost: 640,  updated: '23. 4. 2026', conflicts: 0, agentState: null,        isBug: false },
+    { id: 'TF-415', title: 'Validace IBAN při zadání platebního údaje',   epic: 'EP-03', status: 'Testing',    cost: 1320, updated: '23. 4. 2026', conflicts: 0, agentState: null,        isBug: false },
+    { id: 'TF-414', title: 'Notifikace o blížícím se vypršení smlouvy',   epic: 'EP-04', status: 'Done',       cost: 1180, updated: '21. 4. 2026', conflicts: 0, agentState: null,        isBug: false },
+    { id: 'TF-413', title: 'Editace adresy v profilu — chybové hlášky',   epic: 'EP-02', status: 'Draft',      cost: null, updated: '21. 4. 2026', conflicts: 2, agentState: 'reviewing', isBug: false },
+    { id: 'TF-412', title: 'Bug: dvojklik na "Vytvořit story" duplikuje', epic: 'EP-01', status: 'Dev plán',   cost: 480,  updated: '18. 4. 2026', conflicts: 0, agentState: null,        isBug: true  },
+    { id: 'TF-411', title: 'Refaktor: sjednotit ikonografii v navigaci',  epic: 'EP-01', status: 'Done',       cost: 720,  updated: '18. 4. 2026', conflicts: 0, agentState: null,        isBug: false },
+  ];
+
+  const FILTERS = {
+    open:      s => s.status !== 'Done',
+    userstory: s => !s.isBug,
+    bugs:      s => s.isBug,
+    closed:    s => s.status === 'Done',
+  };
+
+  let currentFilter = 'open';
+
+  function getTabCounts() {
+    return Object.entries(FILTERS).map(([key, fn]) => ({
+      key,
+      label: { open: 'Otevřené', userstory: 'User story', bugs: 'Bugy', closed: 'Zavřené' }[key],
+      count: STORIES.filter(fn).length,
+    }));
+  }
+
+  function render() {
+    const rows = STORIES.filter(FILTERS[currentFilter] || (() => true));
+    const app = document.getElementById('app');
+
+    app.innerHTML =
+      renderPageHeader({ breadcrumb: 'EP-01 Task-forge · 3 epicy v sprintu', title: 'Seznam stories' }) +
+      renderFilterTabs({
+        tabs: getTabCounts(),
+        active: currentFilter,
+        agentBanner: 'Agent právě reviewuje <b>2 stories</b> — uvidíš výsledek do pár minut',
+      }) +
+      renderTable({ bodyId: 'storiesBody' }) +
+      renderPagination({ current: 1, pages: [1, 2, 3], total: 12, shownId: 'rangeShown', totalId: 'rangeTotal' });
+
+    document.getElementById('storiesBody').innerHTML = rows.map(renderTableRow).join('');
+    document.getElementById('rangeShown').textContent = rows.length === 0 ? '0' : `1–${rows.length}`;
+    document.getElementById('rangeTotal').textContent = String(rows.length);
+
+    // Tab interakce
+    document.querySelectorAll('.filters__tabs .tab').forEach(tab => {
+      tab.addEventListener('click', () => {
+        currentFilter = tab.dataset.filter;
+        render();
+      });
+    });
+  }
+
+  render();
+</script>
+</body>
+</html>

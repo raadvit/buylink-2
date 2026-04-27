@@ -1,0 +1,151 @@
+<!doctype html>
+<html lang="cs">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Task forge — Seznam stories</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;550;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+
+<!-- =================== TOP NAVIGATION =================== -->
+<header class="topnav">
+  <!-- Left: logo + primary nav -->
+  <div class="topnav__left">
+    <div class="topnav__logo">
+      <div class="topnav__logo-mark">TF</div>
+      <div class="topnav__logo-name">Task forge</div>
+    </div>
+    <nav class="topnav__nav">
+      <button class="nav-link is-active" type="button">
+        <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+          <rect x="2" y="3"    width="10" height="1.5" rx="0.5" fill="currentColor"/>
+          <rect x="2" y="6.25" width="10" height="1.5" rx="0.5" fill="currentColor"/>
+          <rect x="2" y="9.5"  width="10" height="1.5" rx="0.5" fill="currentColor"/>
+        </svg>
+        Seznam stories
+      </button>
+    </nav>
+  </div>
+
+  <!-- Center: search -->
+  <div class="topnav__search-wrap">
+    <div class="search">
+      <svg width="13" height="13" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+        <circle cx="6" cy="6" r="4" stroke="currentColor" stroke-width="1.5"/>
+        <path d="M9 9 L12 12" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+      </svg>
+      <input type="text" placeholder="Hledat tickety, epicy, lidi…" />
+      <span class="search__kbd mono">⌘K</span>
+    </div>
+  </div>
+
+  <!-- Right: actions + user -->
+  <div class="topnav__right">
+    <button class="btn btn--secondary btn--bug" type="button">
+      <span class="dot dot--danger"></span>
+      Vytvořit bug
+    </button>
+    <button class="btn btn--primary" type="button">+ Vytvořit story</button>
+    <span class="topnav__divider"></span>
+
+    <button class="icon-btn" type="button" aria-label="Notifikace">
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+        <path d="M3.5 11 V7.5 a4.5 4.5 0 0 1 9 0 V11 l1 1.5 H2.5 Z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/>
+        <path d="M6.5 13.5 a1.5 1.5 0 0 0 3 0" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>
+      </svg>
+      <span class="icon-btn__badge"></span>
+    </button>
+
+    <div class="user-menu" tabindex="0">
+      <div class="user-menu__avatar">JK</div>
+      <div class="user-menu__meta">
+        <span class="user-menu__name">Jana Kovářová</span>
+        <span class="user-menu__role">Product Owner</span>
+      </div>
+      <svg width="10" height="10" viewBox="0 0 10 10" fill="none" aria-hidden="true">
+        <path d="M2 4 L5 7 L8 4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+    </div>
+  </div>
+</header>
+
+<!-- =================== MAIN CONTENT =================== -->
+<main class="page">
+  <!-- Page header -->
+  <div class="page__header">
+    <div class="page__breadcrumb mono">EP-01 Task-forge · 3 epic v sprintu</div>
+    <h1 class="page__title">Seznam stories</h1>
+  </div>
+
+  <!-- Filter tabs -->
+  <div class="filters">
+    <div class="filters__tabs" role="tablist">
+      <button class="tab is-active" data-filter="open"      type="button" role="tab" aria-selected="true">
+        Otevřené <span class="tab__count">7</span>
+      </button>
+      <button class="tab"           data-filter="userstory" type="button" role="tab" aria-selected="false">
+        User story <span class="tab__count">8</span>
+      </button>
+      <button class="tab"           data-filter="bugs"      type="button" role="tab" aria-selected="false">
+        Bugy <span class="tab__count">1</span>
+      </button>
+      <button class="tab"           data-filter="closed"    type="button" role="tab" aria-selected="false">
+        Zavřené <span class="tab__count">2</span>
+      </button>
+    </div>
+
+    <div class="agent-banner">
+      <span class="agent-banner__avatar" aria-hidden="true">
+        <svg width="11" height="11" viewBox="0 0 16 16" fill="none">
+          <path d="M8 2 L13 8 L8 14 L3 8 Z" fill="white" opacity="0.95"/>
+          <circle cx="8" cy="8" r="2" fill="currentColor"/>
+        </svg>
+      </span>
+      Agent právě reviewuje <b>2 stories</b> — uvidíš výsledek do pár minut
+    </div>
+  </div>
+
+  <!-- Table -->
+  <div class="table" role="table">
+    <div class="table__head" role="row">
+      <div role="columnheader">ID</div>
+      <div role="columnheader">Název</div>
+      <div role="columnheader">Status</div>
+      <div role="columnheader" class="col-epic">Epic</div>
+      <div role="columnheader" class="col-type">Typ</div>
+      <div role="columnheader" class="ta-right col-cost">Náklady</div>
+      <div role="columnheader" class="ta-right col-updated">Upraveno</div>
+    </div>
+    <div class="table__body" id="storiesBody"><!-- rows injected by app.js --></div>
+  </div>
+
+  <!-- Footer / pagination -->
+  <div class="page__footer">
+    <span class="page__count">Zobrazeno <b id="rangeShown">1–7</b> z <span id="rangeTotal">7</span></span>
+
+    <div class="pagination">
+      <span class="pagination__pagesize">50 na stránku</span>
+      <span class="pagination__divider"></span>
+
+      <button class="pagination__btn" disabled aria-label="Předchozí stránka">
+        <svg width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M6.5 2 L3.5 5 L6.5 8" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </button>
+      <button class="pagination__btn is-active" type="button">1</button>
+      <button class="pagination__btn" type="button">2</button>
+      <button class="pagination__btn" type="button">3</button>
+      <span class="pagination__ellipsis">…</span>
+      <button class="pagination__btn" type="button">12</button>
+      <button class="pagination__btn" type="button" aria-label="Další stránka">
+        <svg width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M3.5 2 L6.5 5 L3.5 8" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </button>
+    </div>
+  </div>
+</main>
+
+<script src="app.js"></script>
+</body>
+</html>

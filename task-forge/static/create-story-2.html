@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="cs">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Nová story — Task Forge</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;550;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="/static/style.css" />
+<style>
+  html, body { height: 100%; overflow: hidden; display: flex; flex-direction: column; }
+</style>
+<script src="/static/nav.js"></script>
+<script src="/static/story-form.js"></script>
+</head>
+<body>
+<div id="root" style="flex:1;overflow:hidden;display:flex;flex-direction:column"></div>
+<script>
+  initNav('create-story');
+
+  // ── State ──────────────────────────────────────────────────────────────────
+  let _issueNumber = null;
+  let _wikiPath    = null;
+  let _sessionId   = null;
+  let _pollTimer   = null;
+
+  const root = document.getElementById('root');
+
+  const _dupeData = (() => {
+    try { const d = JSON.parse(sessionStorage.getItem('tf-duplicate') || 'null'); sessionStorage.removeItem('tf-duplicate'); return d; } catch { return null; }
+  })();
+
+  initStoryForm(root, _dupeData || {}, {
+    editable: true,
+    onSave:   saveForm,
+    onSubmit: submitForm,
+  });
+  root.querySelector('#f-title')?.focus();
+
+  // Načti epics pro datalist
+  fetch('/api/issues')
+    .then(r => r.json())
+    .then(issues => {
+      const epics = [...new Set(issues.map(i => i.epic).filter(Boolean))];
+      const dl = root.querySelector('#epic-suggestions');
+      if (dl) dl.innerHTML = epics.map(e => `<option value="${e}">`).join('');
+    })
+    .catch(() => {});
+
+  // ── Helpers ────────────────────────────────────────────────────────────────
+  function addChatMsg(text, role = 'agent') {
+    const chat = root.querySelector('#agentChat');
+    if (!chat) return;
+    const div = document.createElement('div');
+    div.className = `cs-msg ${role}`;
+    div.textContent = text;
+    chat.appendChild(div);
+    chat.scrollTop = chat.scrollHeight;
+  }
+
+  function setStatus(text) {
+    const el = root.querySelector('.cs-agent-status');
+    if (el) el.innerHTML = `<span class="cs-agent-status-dot"></span>${text}`;
+  }
+
+  function setBtns(disabled) {
+    root.querySelector('#btn-save')  ?.toggleAttribute('disabled', disabled);
+    root.querySelector('#btn-submit')?.toggleAttribute('disabled', disabled);
+  }
+
+  // ── Save draft ─────────────────────────────────────────────────────────────
+  async function saveForm() {
+    const payload = root._getFormData();
+    payload.name = payload.title; delete payload.title;
+    if (!payload.name) {
+      const titleEl = root.querySelector('#f-title');
+      if (titleEl) { titleEl.style.borderColor = 'var(--danger)'; titleEl.style.boxShadow = '0 0 0 3px var(--danger-2)'; titleEl.scrollIntoView({ behavior:'smooth', block:'center' }); }
+      return;
+    }
+    setBtns(true); setStatus('Ukládám draft…');
+    try {
+      const fd = new FormData();
+      const body = { ...payload, type: 'story' };
+      if (_issueNumber) { body.issue_number = _issueNumber; body.wiki_path = _wikiPath; }
+      fd.append('data', JSON.stringify(body));
+      (root._uploadedFiles || []).forEach(f => fd.append('files', f));
+      const res = await fetch('/api/save', { method: 'POST', body: fd });
+      if (!res.ok) throw new Error((await res.json()).error || res.status);
+      const data = await res.json();
+      window.location = `/us-${data.issue_number}`;
+    } catch (e) {
+      addChatMsg('Chyba při ukládání: ' + e.message, 'user');
+      setStatus('Chyba');
+      setBtns(false);
+    }
+  }
+
+  // ── Submit for validation — uloží a přesměruje na detail, kde proběhne validace ──
+  async function submitForm() {
+    if (!sfValidate(root)) return;
+    const payload = root._getFormData();
+    payload.name = payload.title; delete payload.title;
+    if (!payload.name) {
+      const titleEl = root.querySelector('#f-title');
+      if (titleEl) { titleEl.style.borderColor = 'var(--danger)'; titleEl.style.boxShadow = '0 0 0 3px var(--danger-2)'; titleEl.scrollIntoView({ behavior:'smooth', block:'center' }); }
+      return;
+    }
+    setBtns(true); setStatus('Ukládám a přesměrovávám…');
+    try {
+      const fd = new FormData();
+      const body = { ...payload, type: 'story' };
+      if (_issueNumber) { body.issue_number = _issueNumber; body.wiki_path = _wikiPath; }
+      fd.append('data', JSON.stringify(body));
+      (root._uploadedFiles || []).forEach(f => fd.append('files', f));
+      const res = await fetch('/api/save', { method: 'POST', body: fd });
+      if (!res.ok) throw new Error((await res.json()).error || res.status);
+      const data = await res.json();
+      window.location = `/us-${data.issue_number}?submit=1`;
+    } catch (e) {
+      addChatMsg('Chyba při ukládání: ' + e.message, 'user');
+      setStatus('Chyba');
+      setBtns(false);
+    }
+  }
+</script>
+</body>
+</html>

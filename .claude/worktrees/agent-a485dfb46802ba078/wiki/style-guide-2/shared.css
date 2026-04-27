@@ -1,0 +1,196 @@
+/* =====================================================
+   Task forge — Shared design tokens & primitives
+   Used by both Stories list and Story detail pages.
+   ===================================================== */
+
+:root {
+  /* Surfaces */
+  --bg:        oklch(98.5% 0.005 95);
+  --surface:   oklch(100% 0 0);
+  --surface-2: oklch(97% 0.005 95);
+
+  /* Lines */
+  --line:      oklch(91% 0.006 95);
+  --line-2:    oklch(85% 0.008 95);
+
+  /* Text */
+  --ink:       oklch(22% 0.01 270);
+  --ink-2:     oklch(40% 0.012 270);
+  --ink-3:     oklch(58% 0.012 270);
+  --ink-4:     oklch(72% 0.012 270);
+
+  /* Accent (purple) */
+  --accent:     oklch(52% 0.18 290);
+  --accent-2:   oklch(96% 0.03 290);
+  --accent-ink: oklch(38% 0.14 290);
+
+  /* States */
+  --ok:        oklch(58% 0.13 150);
+  --ok-2:      oklch(96% 0.04 150);
+  --warn:      oklch(70% 0.14 75);
+  --warn-2:    oklch(96% 0.05 75);
+  --danger:    oklch(58% 0.18 25);
+  --danger-2:  oklch(96% 0.04 25);
+}
+
+/* ---------- Reset / base ---------- */
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; }
+body {
+  background: var(--surface);
+  color: var(--ink);
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  font-feature-settings: 'cv11', 'ss01';
+  font-size: 14px; line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+.mono     { font-family: 'JetBrains Mono', ui-monospace, monospace; }
+.ta-right { text-align: right; }
+
+/* Subtle scrollbars */
+::-webkit-scrollbar       { width: 10px; height: 10px; }
+::-webkit-scrollbar-thumb { background: var(--line-2); border-radius: 10px; border: 2px solid var(--surface); }
+::-webkit-scrollbar-track { background: transparent; }
+
+
+/* =====================================================
+   Buttons
+   ===================================================== */
+.btn {
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 9px 14px;
+  border-radius: 8px;
+  font: inherit; font-size: 13.5px; font-weight: 550;
+  border: 1px solid transparent;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 120ms, border-color 120ms, color 120ms, transform 120ms;
+}
+.btn--primary       { background: var(--accent); color: white; }
+.btn--primary:hover { background: oklch(48% 0.19 290); }
+
+.btn--secondary       { background: var(--surface); border-color: var(--line); color: var(--ink); }
+.btn--secondary:hover { background: var(--surface-2); border-color: var(--line-2); }
+
+.btn--ghost       { background: transparent; color: var(--ink-2); }
+.btn--ghost:hover { background: var(--surface-2); color: var(--ink); }
+
+.btn--success { background: var(--ok); color: white; box-shadow: 0 1px 2px oklch(50% 0.13 150 / 0.25); }
+.btn--success:hover { background: oklch(48% 0.14 150); transform: translateY(-1px); }
+
+.btn--bug { color: var(--danger); }
+
+/* Icon-only square button */
+.icon-btn {
+  position: relative;
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 32px; height: 32px;
+  border-radius: 7px;
+  border: none; background: transparent;
+  color: var(--ink-2);
+  cursor: pointer;
+  transition: background 120ms, color 120ms;
+}
+.icon-btn:hover { background: var(--surface-2); color: var(--ink); }
+.icon-btn__badge {
+  position: absolute; top: 6px; right: 6px;
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+
+/* Tiny dot inside btn content */
+.dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
+.dot--danger  { background: var(--danger); }
+.dot--ok      { background: var(--ok); }
+
+
+/* =====================================================
+   Top navigation (shared)
+   ===================================================== */
+.topnav {
+  position: sticky; top: 0; z-index: 5;
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 24px;
+  padding: 10px 28px;
+  background: var(--bg);
+  border-bottom: 1px solid var(--line);
+}
+.topnav__left  { display: flex; align-items: center; gap: 18px; }
+.topnav__logo  { display: flex; align-items: center; gap: 10px; }
+.topnav__logo-mark {
+  width: 28px; height: 28px;
+  border-radius: 7px;
+  background: var(--ink); color: white;
+  display: flex; align-items: center; justify-content: center;
+  font-weight: 700; font-size: 13px;
+}
+.topnav__logo-name { font-size: 14px; font-weight: 600; letter-spacing: -0.01em; }
+
+.topnav__nav { display: flex; align-items: center; gap: 2px; }
+.nav-link {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 7px 12px;
+  border-radius: 7px;
+  font-size: 13px; font-weight: 500;
+  color: var(--ink-2);
+  border: none; background: transparent;
+  font-family: inherit; cursor: pointer;
+  transition: background 120ms, color 120ms;
+}
+.nav-link:hover     { background: var(--surface-2); color: var(--ink); }
+.nav-link.is-active { background: var(--ink);       color: white; }
+
+/* Search */
+.topnav__search-wrap { justify-self: center; width: 100%; max-width: 480px; }
+.search {
+  display: flex; align-items: center; gap: 8px;
+  padding: 6px 10px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  color: var(--ink-3);
+}
+.search input {
+  flex: 1; border: none; background: transparent; outline: none;
+  font: inherit; font-size: 12.5px; color: var(--ink);
+}
+.search input::placeholder { color: var(--ink-3); }
+.search__kbd {
+  font-size: 10.5px; color: var(--ink-4);
+  padding: 1px 5px;
+  border: 1px solid var(--line-2);
+  border-radius: 4px;
+}
+
+/* Right cluster */
+.topnav__right   { display: flex; align-items: center; gap: 12px; }
+.topnav__divider { width: 1px; height: 24px; background: var(--line); }
+
+/* User menu */
+.user-menu {
+  display: flex; align-items: center; gap: 8px;
+  padding: 4px 8px 4px 4px;
+  border-radius: 7px;
+  cursor: pointer;
+  transition: background 120ms;
+}
+.user-menu:hover { background: var(--surface-2); }
+.user-menu__avatar {
+  width: 28px; height: 28px;
+  border-radius: 50%;
+  background: oklch(75% 0.1 60); color: white;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 11.5px; font-weight: 600;
+}
+.user-menu__meta { display: flex; flex-direction: column; line-height: 1.2; }
+.user-menu__name { font-size: 12.5px; font-weight: 550; }
+.user-menu__role { font-size: 10.5px; color: var(--ink-3); }
+.user-menu svg   { color: var(--ink-3); margin-left: 2px; }
+
+@media (max-width: 1100px) {
+  .user-menu__meta { display: none; }
+}
