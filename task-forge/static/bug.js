@@ -55,7 +55,12 @@ document.addEventListener('DOMContentLoaded', () => {
   const epicEl = document.getElementById('f-epic');
   if (epicEl) {
     epicEl.addEventListener('input', () => _bugCheckField('f-epic', 'fw-epic'));
+    _bugCheckField('f-epic', 'fw-epic');
   }
+
+  // Role — init fill state for pre-selected chips
+  const roleFw = document.getElementById('fw-role');
+  if (roleFw) roleFw.classList.toggle('tf-field--filled', !!document.querySelector('#roles .tf-chip.on'));
 
   // Chips — role
   document.querySelectorAll('#roles .tf-chip').forEach(chip => {
@@ -254,7 +259,7 @@ function _prefillNewBug() {
   }
   if (Array.isArray(d.roles) && d.roles.length > 0) {
     document.querySelectorAll('#roles .tf-chip').forEach(c => {
-      if (d.roles.includes(c.dataset.role)) c.classList.add('on');
+      c.classList.toggle('on', d.roles.includes(c.dataset.role));
     });
     const fw = document.getElementById('fw-role');
     if (fw) fw.classList.toggle('tf-field--filled', true);
@@ -277,7 +282,7 @@ function _prefillDuplicate() {
   if (d.details)       { const el = document.getElementById('f-details');       if (el) { el.value = d.details;       _bugAutoGrow(el); } }
   if (Array.isArray(d.roles)) {
     document.querySelectorAll('#roles .tf-chip').forEach(c => {
-      if (d.roles.includes(c.dataset.role)) c.classList.add('on');
+      c.classList.toggle('on', d.roles.includes(c.dataset.role));
     });
     const fw = document.getElementById('fw-role');
     if (fw) fw.classList.toggle('tf-field--filled', d.roles.length > 0);
@@ -318,7 +323,7 @@ function _prefillFromIssue() {
   if (roleMatch) {
     const roles = roleMatch[1].split(/[,\s]+/).map(r => r.trim().toLowerCase()).filter(Boolean);
     document.querySelectorAll('#roles .tf-chip').forEach(c => {
-      if (roles.includes(c.dataset.role)) c.classList.add('on');
+      c.classList.toggle('on', roles.includes(c.dataset.role));
     });
     const fw = document.getElementById('fw-role');
     if (fw) fw.classList.toggle('tf-field--filled', !!document.querySelector('#roles .tf-chip.on'));

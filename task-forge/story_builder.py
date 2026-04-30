@@ -4,11 +4,14 @@ import pathlib
 import re
 import subprocess
 import time
+import urllib.error
+import urllib.parse
+import urllib.request
 import uuid
 from datetime import date, datetime
 
-import github_helper
 import store_state
+from issue_provider import get_provider
 
 _REPO_ROOT = pathlib.Path(__file__).resolve().parents[1]
 _TOKEN_STRATEGY = _REPO_ROOT / "agents" / "token_strategy.md"
@@ -38,16 +41,7 @@ def _append_status_history(wiki_path: pathlib.Path, status: str) -> None:
 
 
 def _load_github_repo() -> str:
-    config = _REPO_ROOT / ".claude" / "config.md"
-    try:
-        for line in config.read_text(encoding="utf-8").splitlines():
-            if "Main_repo" in line and "`" in line:
-                m = re.search(r"`([^`]+/[^`]+)`", line)
-                if m:
-                    return m.group(1)
-    except Exception:
-        pass
-    return "raadvit/PreciousMetals_backend"
+    return os.environ.get("GITHUB_REPO", "raadvit/PreciousMetals_backend")
 
 
 _GITHUB_REPO = _load_github_repo()
@@ -650,8 +644,9 @@ def run_team_validation(session_id: str, form_data: dict, store) -> None:
         )
         existing_issue = form_data.get("issue_number")
         existing_wiki = form_data.get("wiki_path")
+        provider = get_provider()
         if existing_issue and existing_wiki:
-            parsed = github_helper.update_story(
+            parsed = provider.update_story(
                 issue_number=int(existing_issue),
                 title=form_data["name"],
                 body=story_body,
@@ -659,7 +654,7 @@ def run_team_validation(session_id: str, form_data: dict, store) -> None:
                 repo_root=str(_REPO_ROOT),
             )
         else:
-            parsed = github_helper.create_story(
+            parsed = provider.create_story(
                 title=form_data["name"],
                 body=story_body,
                 epic=form_data.get("epic", ""),
@@ -692,12 +687,24 @@ def update_issue_status_in_development(issue_number: int, wiki_path: str, repo_r
     except Exception as e:
         raise RuntimeError(f"Nepodařilo se přečíst wiki soubor: {e}")
 
-    updated_body = re.sub(r"(- Status:\s*)[^\n]*", r"\g<1>in-development", current_body, count=1)
-    if updated_body == current_body:
-        # Status řádek nenalezen — přidej ho za GitHub řádek nebo na začátek metadat
+    if re.search(r"^- Status:", current_body, re.MULTILINE):
+        # Nahraď všechny výskyty — brání vzniku duplicit při opakovaných voláních
+        updated_body = re.sub(r"^- Status:[^\n]*\n?", "", current_body, flags=re.MULTILINE)
         updated_body = re.sub(
-            r"(- GitHub:.*\n)", r"\g<1>- Status: in-development\n", current_body, count=1
+            r"(^- GitHub:[^\n]*\n)", r"\1- Status: in-development\n", updated_body,
+            count=1, flags=re.MULTILINE,
         )
+        if updated_body == re.sub(r"^- Status:[^\n]*\n?", "", current_body, flags=re.MULTILINE):
+            # GitHub řádek nenalezen, přidej na konec metadat
+            updated_body = updated_body.rstrip() + "\n- Status: in-development\n"
+    else:
+        # Status řádek vůbec neexistuje — přidej za GitHub řádek
+        updated_body = re.sub(
+            r"(^- GitHub:[^\n]*\n)", r"\1- Status: in-development\n", current_body,
+            count=1, flags=re.MULTILINE,
+        )
+        if updated_body == current_body:
+            updated_body = current_body.rstrip() + "\n- Status: in-development\n"
 
     full_path.write_text(updated_body, encoding="utf-8")
     _append_status_history(full_path, "in_development")
@@ -838,18 +845,45 @@ def launch_implement_agent(session_id: str, issue_number: int, store) -> None:
                          impl_plan_in_analysis=_get_impl_plan_in_analysis())
 
 
+def launch_clarify_agent(session_id: str, issue_number: int, store) -> None:
+    """Spustí /clarify agenta — čte pouze story soubor, bez memory systému."""
+    import shutil
+    store.update_session(session_id, status="analyzing", validation_phase="clarify-start")
+    claude_bin = shutil.which("claude") or "/opt/homebrew/bin/claude"
+    cmd = [claude_bin, "-p", f"/clarify {issue_number}", "--output-format", "json"]
+    env = os.environ.copy()
+    env["TF_SESSION_ID"] = session_id
+    env["TF_API_PORT"] = os.environ.get("PORT", "5001")
+    try:
+        result = subprocess.run(cmd, stdin=subprocess.DEVNULL, capture_output=True, text=True,
+                                cwd=str(_REPO_ROOT), env=env)
+    except FileNotFoundError:
+        store.update_session(session_id, status="error", error=f"claude CLI nenalezeno ({claude_bin}).")
+        return
+    except Exception as e:
+        store.update_session(session_id, status="error", error=f"Nepodařilo se spustit agenta: {e}")
+        return
+
+    if result.returncode != 0:
+        store.update_session(session_id, status="error",
+                             error=f"Agent /clarify skončil s chybou (exit {result.returncode}).")
+        return
+
+    store.update_session(session_id, status="done", validation_phase="clarify-finished")
+
+
 def launch_analyze_agent(session_id: str, issue_number: int, store) -> None:
     """Spustí /analyze agenta a po dokončení aktualizuje session."""
     import shutil
     store.update_session(session_id, status="analyzing", validation_phase="draft-start")
     claude_bin = shutil.which("claude") or "/opt/homebrew/bin/claude"
-    cmd = [claude_bin, "-p", f"/analyze {issue_number}"]
+    cmd = [claude_bin, "-p", f"/analyze {issue_number}", "--output-format", "json"]
     env = os.environ.copy()
     env["TF_SESSION_ID"] = session_id
     env["TF_API_PORT"] = "5001"
     try:
-        result = subprocess.run(cmd, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
-                                stderr=subprocess.DEVNULL, cwd=str(_REPO_ROOT), env=env)
+        result = subprocess.run(cmd, stdin=subprocess.DEVNULL, capture_output=True, text=True,
+                                cwd=str(_REPO_ROOT), env=env)
     except FileNotFoundError:
         store.update_session(session_id, status="error", error=f"claude CLI nenalezeno ({claude_bin}).")
         return
@@ -862,12 +896,21 @@ def launch_analyze_agent(session_id: str, issue_number: int, store) -> None:
                              error=f"Agent /analyze skončil s chybou (exit {result.returncode}).")
         return
 
+    # Zachyť náklady z JSON výstupu a přepiš Celkem: v wiki
+    total_cost_usd = 0.0
+    try:
+        out = _json.loads(result.stdout)
+        total_cost_usd = float(out.get("total_cost_usd", 0.0) or 0.0)
+    except Exception:
+        pass
+
     # Zkontroluj výsledný stav ze wiki souboru
     session = store.get_session(session_id)
     wiki_path = (session or {}).get("wiki_path")
     if wiki_path:
         try:
-            body = (_REPO_ROOT / wiki_path).read_text(encoding="utf-8")
+            full_wiki = _REPO_ROOT / wiki_path
+            body = full_wiki.read_text(encoding="utf-8")
             status_m = re.search(r"- Status:\s*([^\n]+)", body)
             wiki_status = status_m.group(1).strip() if status_m else ""
             if wiki_status == "blocked":
@@ -877,10 +920,167 @@ def launch_analyze_agent(session_id: str, issue_number: int, store) -> None:
                                      validation_phase="conflict-check-failed",
                                      error=f"⚠️ Story blokována:\n{conflict_text}")
                 return
+            # Přepiš Celkem: skutečnými náklady ze subprocess
+            if total_cost_usd > 0:
+                updated = re.sub(r"- Celkem: \$[\d.]+", f"- Celkem: ${total_cost_usd:.4f}", body)
+                if updated != body:
+                    full_wiki.write_text(updated, encoding="utf-8")
         except Exception:
             pass
 
     store.update_session(session_id, status="done", validation_phase="done")
+
+
+def _parse_figma_url(url: str) -> tuple[str, str | None]:
+    m = re.search(r'figma\.com/(?:file|design)/([A-Za-z0-9]+)', url)
+    if not m:
+        raise ValueError("Neplatná Figma URL")
+    file_key = m.group(1)
+    params = urllib.parse.parse_qs(urllib.parse.urlparse(url).query)
+    node_id = params.get("node-id", [None])[0]
+    if node_id:
+        node_id = node_id.replace("-", ":").split("&")[0]
+    return file_key, node_id
+
+
+def _fetch_figma_node(file_key: str, node_id: str | None) -> dict:
+    api_key = os.environ.get("FIGMA_API_KEY", "")
+    if not api_key:
+        raise ValueError("FIGMA_API_KEY není nastaven v prostředí")
+    if node_id:
+        api_url = f"https://api.figma.com/v1/files/{file_key}/nodes?ids={urllib.parse.quote(node_id)}"
+    else:
+        api_url = f"https://api.figma.com/v1/files/{file_key}?depth=2"
+    req = urllib.request.Request(api_url, headers={"X-Figma-Token": api_key})
+    with urllib.request.urlopen(req, timeout=30) as resp:
+        return _json.loads(resp.read().decode())
+
+
+def _extract_node_text(node: dict, depth: int = 0) -> str:
+    if depth > 6:
+        return ""
+    ntype = node.get("type", "")
+    name = node.get("name", "")
+    chars = node.get("characters", "")
+    prefix = "  " * depth
+    parts = []
+    if ntype == "TEXT" and chars:
+        parts.append(f"{prefix}[TEXT] {name}: {chars!r}")
+    elif name:
+        parts.append(f"{prefix}[{ntype}] {name}")
+    for child in node.get("children", [])[:25]:
+        t = _extract_node_text(child, depth + 1)
+        if t:
+            parts.append(t)
+    return "\n".join(parts)
+
+
+def _summarize_figma_data(data: dict) -> str:
+    if "nodes" in data:
+        parts = []
+        for node_data in data["nodes"].values():
+            if node_data:
+                parts.append(_extract_node_text(node_data.get("document", {})))
+        return "\n\n".join(parts)
+    if "document" in data:
+        return _extract_node_text(data["document"])
+    return str(data)[:3000]
+
+
+def _fetch_figma_image(file_key: str, node_id: str) -> tuple[str, str]:
+    """Vrátí (cdn_url, base64_png). Vyžaduje node_id."""
+    import base64  # noqa: PLC0415
+    api_key = os.environ.get("FIGMA_API_KEY", "")
+    if not api_key:
+        raise ValueError("FIGMA_API_KEY není nastaven v prostředí")
+    api_url = (
+        f"https://api.figma.com/v1/images/{file_key}"
+        f"?ids={urllib.parse.quote(node_id)}&format=png&scale=1"
+    )
+    req = urllib.request.Request(api_url, headers={"X-Figma-Token": api_key})
+    with urllib.request.urlopen(req, timeout=30) as resp:
+        data = _json.loads(resp.read().decode())
+    cdn_url = data.get("images", {}).get(node_id)
+    if not cdn_url:
+        raise ValueError("Figma nevrátilo image URL pro daný node")
+    with urllib.request.urlopen(cdn_url, timeout=30) as resp:
+        image_b64 = base64.b64encode(resp.read()).decode()
+    return cdn_url, image_b64
+
+
+def _call_claude_vision(image_path: str, prompt: str, model: str) -> dict | None:
+    full_prompt = f"{prompt}\n\nCesta k obrázku: {image_path}\nPoužij Read nástroj pro načtení obrázku."
+    try:
+        result = subprocess.run(
+            ["claude", "-p", full_prompt, "--model", model, "--output-format", "json",
+             "--no-session-persistence", "--max-budget-usd", str(_MAX_BUDGET_USD_PER_RUN),
+             "--allowedTools", "Read"],
+            stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=None,
+            text=True, timeout=120, cwd=str(_REPO_ROOT),
+        )
+    except FileNotFoundError:
+        return {"error": "claude_not_found"}
+    except subprocess.TimeoutExpired:
+        return {"error": "timeout"}
+    try:
+        outer = _json.loads(result.stdout)
+    except Exception:
+        return {"error": "parse_error"}
+    if outer.get("is_error"):
+        return {"error": outer.get("subtype", "api_error")}
+    raw = outer.get("result", "").strip()
+    parsed = _parse_agent_json(raw)
+    if parsed.get("shows") or parsed.get("behaves"):
+        return {"shows": parsed.get("shows", ""), "behaves": parsed.get("behaves", "")}
+    return {"shows": raw, "behaves": ""}
+
+
+def run_figma_describe(figma_url: str) -> dict | None:
+    import base64, tempfile
+    try:
+        file_key, node_id = _parse_figma_url(figma_url)
+        figma_data = _fetch_figma_node(file_key, node_id)
+        node_summary = _summarize_figma_data(figma_data)[:3000]
+        if not node_id:
+            return {"error": "Pro načtení obrázku zadej URL s ?node-id=..."}
+        cdn_url, image_b64 = _fetch_figma_image(file_key, node_id)
+    except urllib.error.HTTPError as e:
+        return {"error": f"Figma API vrátilo {e.code}: {e.reason}"}
+    except ValueError as e:
+        return {"error": str(e)}
+    except Exception as e:
+        return {"error": f"Figma API chyba: {e}"}
+
+    tmp_path = None
+    try:
+        with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp:
+            tmp.write(base64.b64decode(image_b64))
+            tmp_path = tmp.name
+
+        prompt = (
+            "Jsi Product Owner. Přečti obrázek (screenshot z Figma designu) a vrať JSON se dvěma klíči.\n\n"
+            "Klíč \"shows\": popis co uživatel vidí, strukturovaný podle řádků/sekcí v designu (shora dolů). "
+            "Každý řádek nebo sekce = jeden krátký odstavec. Odstavce odděl prázdným řádkem (\\n\\n). "
+            "Pro každý odstavec uveď co daná část obrazovky zobrazuje, jaké prvky obsahuje a v jakém jsou stavu. "
+            "Piš v češtině, bez markdown.\n\n"
+            "Klíč \"behaves\": pouze seznam názvů komponent jako šablona pro BO, v pořadí shora dolů. "
+            "Každá položka: název komponenty, nový řádek, pomlčka, prázdný řádek. "
+            "Příklad:\nNavigace\n-\n\nFormulář přihlášení\n-\n\nTlačítko Odeslat\n-\n\n"
+            f"Doplňkový kontext — vrstvová struktura z Figma:\n{node_summary}\n\n"
+            "Vrať pouze validní JSON objekt, žádný další text."
+        )
+        result = _call_claude_vision(tmp_path, prompt, _model_for_agent("product-owner"))
+    finally:
+        if tmp_path:
+            try:
+                pathlib.Path(tmp_path).unlink()
+            except Exception:
+                pass
+
+    if result and "error" not in result:
+        result["image_url"] = cdn_url
+        result["_image_bytes"] = base64.b64decode(image_b64)
+    return result
 
 
 def run_review_comment(session_id: str, comment_id: str, comment_text: str, form_data: dict, store) -> None:

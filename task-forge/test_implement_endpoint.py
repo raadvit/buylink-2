@@ -84,8 +84,8 @@ class TestImplementEndpoint(unittest.TestCase):
     # --- bezpečnostní check — typ issue ---
 
     @patch.object(story_builder, "_get_issue_info",
-                  return_value=_make_issue_info(labels=[{"name": "bug"}]))
-    def test_non_user_story_returns_400(self, _mock):
+                  return_value={"title": "X", "labels": [{"name": "idea"}], "body": "- Status: new\n"})
+    def test_non_story_non_bug_returns_400(self, _mock):
         resp = self.client.post(
             "/api/implement",
             data=json.dumps({"issue_number": 42}),
@@ -98,7 +98,7 @@ class TestImplementEndpoint(unittest.TestCase):
     # --- bezpečnostní check — stav story ---
 
     @patch.object(story_builder, "_get_issue_info",
-                  return_value=_make_issue_info(status="draft"))
+                  return_value=_make_issue_info(status="draft", labels=[{"name": "user story"}]))
     def test_wrong_status_returns_400(self, _mock):
         resp = self.client.post(
             "/api/implement",
@@ -107,7 +107,7 @@ class TestImplementEndpoint(unittest.TestCase):
         )
         self.assertEqual(resp.status_code, 400)
         body = json.loads(resp.data)
-        self.assertIn("ready-for-arch", body["error"])
+        self.assertIn("dev-plan", body["error"])
 
     @patch.object(story_builder, "_get_issue_info",
                   return_value=_make_issue_info(status="in-development"))
@@ -119,29 +119,29 @@ class TestImplementEndpoint(unittest.TestCase):
         )
         self.assertEqual(resp.status_code, 400)
 
-    # --- GitHub API selhání při aktualizaci stavu ---
+    # --- GitHub API selhání při aktualizaci stavu — non-fatal, vrátí 202 ---
 
+    @patch("subprocess.run", return_value=MagicMock(returncode=0))
     @patch.object(story_builder, "_get_issue_info",
-                  return_value=_make_issue_info(status="validated"))
+                  return_value=_make_issue_info(status="validated", labels=[{"name": "user story"}]))
     @patch.object(story_builder, "update_issue_status_in_development",
                   side_effect=RuntimeError("gh issue edit selhal: 422"))
-    def test_github_update_failure_returns_500(self, _mock_update, _mock_info):
+    def test_github_update_failure_still_returns_202(self, _mock_update, _mock_info, _mock_run):
         resp = self.client.post(
             "/api/implement",
             data=json.dumps({"issue_number": 42}),
             content_type="application/json",
         )
-        self.assertEqual(resp.status_code, 500)
-        body = json.loads(resp.data)
-        self.assertIn("error", body)
+        self.assertEqual(resp.status_code, 202)
 
     # --- happy path: validated ---
 
+    @patch("subprocess.run", return_value=MagicMock(returncode=0))
     @patch.object(story_builder, "_get_issue_info",
                   return_value=_make_issue_info(status="validated"))
     @patch.object(story_builder, "update_issue_status_in_development")
     @patch.object(story_builder, "launch_implement_agent")
-    def test_happy_path_validated_returns_202(self, mock_launch, mock_update, _mock_info):
+    def test_happy_path_validated_returns_202(self, mock_launch, mock_update, _mock_info, _mock_run):
         # launch_implement_agent běží v threadu — zablokujeme event aby byl výsledek deterministický
         called = threading.Event()
         def _fake_launch(session_id, issue_number, s):
@@ -157,17 +157,18 @@ class TestImplementEndpoint(unittest.TestCase):
         body = json.loads(resp.data)
         self.assertTrue(body.get("success"))
         self.assertIn("session_id", body)
-        mock_update.assert_called_once()
         called.wait(timeout=2)
+        mock_update.assert_called_once()
         mock_launch.assert_called_once()
 
     # --- happy path: ready-for-arch ---
 
+    @patch("subprocess.run", return_value=MagicMock(returncode=0))
     @patch.object(story_builder, "_get_issue_info",
                   return_value=_make_issue_info(status="ready-for-arch"))
     @patch.object(story_builder, "update_issue_status_in_development")
     @patch.object(story_builder, "launch_implement_agent")
-    def test_happy_path_ready_for_arch_returns_202(self, mock_launch, _mock_update, _mock_info):
+    def test_happy_path_ready_for_arch_returns_202(self, mock_launch, _mock_update, _mock_info, _mock_run):
         resp = self.client.post(
             "/api/implement",
             data=json.dumps({"issue_number": 99}),
@@ -177,20 +178,23 @@ class TestImplementEndpoint(unittest.TestCase):
         body = json.loads(resp.data)
         self.assertTrue(body.get("success"))
 
-    # --- atomicita: při chybě GitHub se agent nespustí ---
+    # --- atomicita: při chybě GitHub se agent nespustí (queue worker chybu zachytí) ---
 
+    @patch("subprocess.run", return_value=MagicMock(returncode=0))
     @patch.object(story_builder, "_get_issue_info",
-                  return_value=_make_issue_info(status="validated"))
+                  return_value=_make_issue_info(status="validated", labels=[{"name": "user story"}]))
     @patch.object(story_builder, "update_issue_status_in_development",
                   side_effect=RuntimeError("GitHub API nedostupné"))
     @patch.object(story_builder, "launch_implement_agent")
-    def test_atomic_no_agent_on_github_failure(self, mock_launch, _mock_update, _mock_info):
+    def test_atomic_no_agent_on_github_failure(self, mock_launch, _mock_update, _mock_info, _mock_run):
+        import time
         resp = self.client.post(
             "/api/implement",
             data=json.dumps({"issue_number": 42}),
             content_type="application/json",
         )
-        self.assertEqual(resp.status_code, 500)
+        self.assertEqual(resp.status_code, 202)
+        time.sleep(0.1)  # queue worker dostane čas na zpracování
         mock_launch.assert_not_called()
 
 

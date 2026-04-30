@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="cs">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>404 — Task Forge</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;550;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="/static/style.css" />
+<script src="/static/nav.js"></script>
+<style>
+.page--centered {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  padding-top: 56px;
+  text-align: center;
+  gap: 12px;
+}
+.robot-icon {
+  animation: float 2.8s ease-in-out infinite;
+  margin-bottom: 8px;
+}
+@keyframes float {
+  0%, 100% { transform: translateY(0); }
+  50%       { transform: translateY(-10px); }
+}
+.not-found-title {
+  font-size: 24px;
+  font-weight: 600;
+  color: var(--ink);
+  margin: 0;
+}
+.not-found-desc {
+  font-size: 15px;
+  color: var(--ink-2);
+  margin: 0;
+}
+</style>
+</head>
+<body>
+<main class="page page--centered">
+  <svg class="robot-icon" width="80" height="80" viewBox="0 0 80 80" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <!-- antenna -->
+    <line x1="40" y1="6" x2="40" y2="16" stroke="var(--ok)" stroke-width="3" stroke-linecap="round"/>
+    <circle cx="40" cy="5" r="4" fill="var(--ok)"/>
+    <!-- head -->
+    <rect x="16" y="16" width="48" height="34" rx="8" fill="var(--ok)"/>
+    <!-- eyes -->
+    <rect x="25" y="26" width="10" height="10" rx="3" fill="white"/>
+    <rect x="45" y="26" width="10" height="10" rx="3" fill="white"/>
+    <circle cx="30" cy="31" r="3" fill="var(--ok)"/>
+    <circle cx="50" cy="31" r="3" fill="var(--ok)"/>
+    <!-- mouth -->
+    <rect x="28" y="40" width="24" height="4" rx="2" fill="white" opacity="0.7"/>
+    <!-- neck -->
+    <rect x="35" y="50" width="10" height="6" rx="2" fill="var(--ok)"/>
+    <!-- body -->
+    <rect x="18" y="56" width="44" height="20" rx="8" fill="var(--ok)"/>
+    <!-- arms -->
+    <rect x="4" y="58" width="14" height="8" rx="4" fill="var(--ok)"/>
+    <rect x="62" y="58" width="14" height="8" rx="4" fill="var(--ok)"/>
+  </svg>
+  <h1 class="not-found-title">Stránka nenalezena</h1>
+  <p class="not-found-desc">Tato stránka neexistuje.</p>
+  <a href="/list" class="tf-btn tf-btn-primary" style="margin-top:8px;text-decoration:none;display:inline-flex;align-items:center;gap:6px;">
+    Přejít na hlavní stránku
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <path d="M5 8 L11 8 M8 5 L11 8 L8 11" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+    </svg>
+  </a>
+</main>
+<script>initNav('');</script>
+</body>
+</html>

@@ -1,0 +1,10 @@
+__pycache__/
+*.py[cod]
+.DS_Store
+.idea/
+*.xlsx
+~$*
+.claude/worktrees/
+wiki/style-guide/
+wiki/temporary/
+.env

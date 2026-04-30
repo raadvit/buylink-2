@@ -59,12 +59,12 @@ class AnalysisQueue:
         self._lock = threading.Lock()
         self._queue: list[str] = []
 
-    def submit(self, session_id: str, issue_number: int, launch_fn, store) -> int:
+    def submit(self, session_id: str, issue_number: int, launch_fn, store, pre_start_fn=None) -> int:
         with self._lock:
             self._queue.append(session_id)
             position = len(self._queue)
         store.update_session(session_id, status="queued", queue_position=position)
-        t = threading.Thread(target=self._worker, args=(session_id, issue_number, launch_fn, store), daemon=True)
+        t = threading.Thread(target=self._worker, args=(session_id, issue_number, launch_fn, store, pre_start_fn), daemon=True)
         t.start()
         return position
 
@@ -75,7 +75,7 @@ class AnalysisQueue:
             except ValueError:
                 return 0
 
-    def _worker(self, session_id: str, issue_number: int, launch_fn, store) -> None:
+    def _worker(self, session_id: str, issue_number: int, launch_fn, store, pre_start_fn=None) -> None:
         self._semaphore.acquire()
         try:
             with self._lock:
@@ -83,6 +83,8 @@ class AnalysisQueue:
                     self._queue.remove(session_id)
                 except ValueError:
                     pass
+            if pre_start_fn:
+                pre_start_fn()
             store.update_session(session_id, status="analyzing", queue_position=0)
             launch_fn(session_id, issue_number, store)
         finally:

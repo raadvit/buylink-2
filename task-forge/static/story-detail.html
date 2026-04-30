@@ -57,6 +57,41 @@
       });
       initChatInput();
 
+      // Figma načítání
+      const btnFigma = root.querySelector('#btn-figma-load');
+      if (btnFigma) {
+        btnFigma.addEventListener('click', async () => {
+          const url = root.querySelector('#f-figma-url')?.value?.trim();
+          if (!url) { addChatMsg('Zadej Figma URL.', 'user'); return; }
+          btnFigma.disabled = true;
+          btnFigma.textContent = 'Načítám…';
+          addChatMsg('Odesílám Figma URL agentovi…');
+          addChatMsg('Product Owner načítá design přes MCP — může to trvat 20–60 sekund.');
+          try {
+            const res = await fetch('/api/figma-describe', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ figma_url: url, issue_number: issueNumber }),
+            });
+            const j = await res.json();
+            if (!res.ok) throw new Error(j.error || res.status);
+            const shows = root.querySelector('#f-shows');
+            if (shows) { shows.value = j.description; _sfAutoGrow(shows); shows.dispatchEvent(new Event('input')); }
+            const behaves = root.querySelector('#f-behaves');
+            if (behaves && j.behaves) { behaves.value = j.behaves; _sfAutoGrow(behaves); behaves.dispatchEvent(new Event('input')); }
+            const preview = root.querySelector('#figma-preview');
+            if (preview && j.image_url) { preview.src = j.image_url; preview.style.display = 'block'; }
+            root._figmaPreviewCdnUrl = j.image_url || '';
+            addChatMsg('✓ Popis načten z Figmy a vyplněn do polí „Co se zobrazuje" a „Jak se to chová".');
+          } catch (e) {
+            addChatMsg('Chyba při načítání Figma: ' + e.message, 'user');
+          } finally {
+            btnFigma.disabled = false;
+            btnFigma.textContent = 'Načíst';
+          }
+        });
+      }
+
       // Tlačítka Vytvořit bug + Zavřít (ready_for_testing)
       const btnCreateBug = root.querySelector('#btn-create-bug');
       if (btnCreateBug) {
@@ -85,16 +120,113 @@
         });
       }
 
+      // Tlačítko Clarify ve formuláři (editable)
+      const btnClarifyForm = root.querySelector('#btn-clarify');
+      if (btnClarifyForm) {
+        btnClarifyForm.addEventListener('click', async () => {
+          if (!sfValidate(root)) { addChatMsg('Vyplň prosím všechna povinná pole.', 'user'); return; }
+          btnClarifyForm.disabled = true;
+          setStatus('Ukládám…');
+          try {
+            const payload = root._getFormData();
+            payload.name = payload.title; delete payload.title;
+            const fd = new FormData();
+            fd.append('data', JSON.stringify({ ...payload, issue_number: issueNumber, wiki_path: _apiData?.wiki_path }));
+            (root._uploadedFiles || []).forEach(f => fd.append('files', f));
+            const saveRes = await fetch('/api/update', { method: 'POST', body: fd });
+            if (!saveRes.ok) throw new Error((await saveRes.json()).error || saveRes.status);
+            const r = await fetch('/api/clarify', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ issue_number: issueNumber, name: payload.name }),
+            });
+            const j = await r.json();
+            if (!r.ok) throw new Error(j.error || `HTTP ${r.status}`);
+            _sessionId = j.session_id;
+            localStorage.setItem(_LS_KEY, _sessionId);
+            addChatMsg('Clarify agent generuje otázky… Počkej chvíli.');
+            setBtns(true);
+            startPolling();
+          } catch (e) {
+            addChatMsg('Chyba: ' + e.message, 'user');
+            btnClarifyForm.disabled = false;
+            setStatus('Chyba');
+          }
+        }, { once: true });
+      }
+
+      // Tlačítko Spustit Clarify (read-only, stav new)
+      const btnClarify = root.querySelector('#btn-start-clarify');
+      if (btnClarify) {
+        btnClarify.addEventListener('click', async () => {
+          btnClarify.disabled = true;
+          try {
+            const r = await fetch('/api/clarify', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ issue_number: issueNumber, name: _apiData?.title }),
+            });
+            const j = await r.json();
+            if (!r.ok) { addChatMsg('Chyba: ' + (j.error || `HTTP ${r.status}`), 'user'); btnClarify.disabled = false; return; }
+            _sessionId = j.session_id;
+            localStorage.setItem(_LS_KEY, _sessionId);
+            addChatMsg('Clarify agent generuje otázky… Počkej chvíli.');
+            startPolling();
+          } catch (e) {
+            addChatMsg('Síťová chyba: ' + e.message, 'user'); btnClarify.disabled = false;
+          }
+        }, { once: true });
+      }
+
+      // Tlačítko Odeslat týmu k validaci (ze stavu clarify / needs-clarify)
+      const btnSubmitTeam = root.querySelector('#btn-submit-team');
+      if (btnSubmitTeam) {
+        btnSubmitTeam.addEventListener('click', async () => {
+          btnSubmitTeam.disabled = true;
+          // Sesbírej odpovědi z clarify karet
+          const cards = root.querySelectorAll('.cs-clarify-card');
+          const answers = [];
+          cards.forEach(card => {
+            const idx = parseInt(card.dataset.idx, 10);
+            const answer = card.querySelector('.cs-clarify-input')?.value?.trim() || '';
+            if (answer) answers.push({ index: idx, answer });
+          });
+          try {
+            // Zapiš odpovědi do wiki pokud existují
+            if (answers.length > 0) {
+              await fetch('/api/clarify/answers', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ issue_number: issueNumber, answers }),
+              });
+            }
+            // Zařaď analýzu do fronty
+            const r = await fetch('/api/queue', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ issue_number: issueNumber, type: 'analysis' }),
+            });
+            const j = await r.json();
+            if (!r.ok) { addChatMsg('Chyba: ' + (j.error || `HTTP ${r.status}`), 'user'); btnSubmitTeam.disabled = false; return; }
+            addChatMsg('Analýza zařazena do fronty…');
+            renderTimelineInline(root.querySelector('#story-timeline-container'), 'draft-start');
+            _waitForSession();
+          } catch (e) {
+            addChatMsg('Síťová chyba: ' + e.message, 'user'); btnSubmitTeam.disabled = false;
+          }
+        }, { once: true });
+      }
+
       // Tlačítko Spustit vývoj
       const btnDev = root.querySelector('#btn-start-dev');
       if (btnDev) {
         btnDev.addEventListener('click', async () => {
           btnDev.disabled = true;
           try {
-            const r = await fetch('/api/implement', {
+            const r = await fetch('/api/queue', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ issue_number: issueNumber }),
+              body: JSON.stringify({ issue_number: issueNumber, type: 'development' }),
             });
             const ct = r.headers.get('content-type') || '';
             const j = ct.includes('json') ? await r.json() : {};
@@ -122,8 +254,13 @@
         const chat = root.querySelector('#agentChat');
         function addBlockerCard(description, resolution) {
           if (!chat) return;
+          const msgDiv = document.createElement('div');
+          msgDiv.className = 'cs-msg agent';
+          const msgAv = document.createElement('div');
+          msgAv.className = 'cs-msg-av cs-msg-av--agent';
+          msgAv.textContent = 'F';
           const card = document.createElement('div');
-          card.style.cssText = 'background:oklch(96% 0.05 80);border:1px solid oklch(88% 0.08 80);border-radius:10px;padding:14px 16px;display:flex;flex-direction:column;gap:8px;';
+          card.style.cssText = 'background:oklch(96% 0.05 80);border:1px solid oklch(88% 0.08 80);border-radius:10px;padding:14px 16px;display:flex;flex-direction:column;gap:8px;flex:1;';
           const header = document.createElement('div');
           header.style.cssText = 'display:flex;align-items:center;gap:8px;';
           header.innerHTML = `
@@ -142,7 +279,8 @@
             res.textContent = '→ ' + resolution;
             card.appendChild(res);
           }
-          chat.appendChild(card);
+          msgDiv.append(msgAv, card);
+          chat.appendChild(msgDiv);
           chat.scrollTop = chat.scrollHeight;
         }
 
@@ -164,6 +302,43 @@
         }
       }
 
+      if (data.status === 'validated' || data.status === 'dev-plan') {
+        addChatMsg('Analýza proběhla úspěšně. Story je připravena k implementaci.');
+      }
+
+      // Zobraz clarify otázky ze sekce ## Clarify ve wiki
+      if (data.status === 'clarify' || data.status === 'needs-clarify') {
+        const wiki = apiData.wiki || apiData.body || '';
+        const clarifyMatch = wiki.match(/##\s+Clarify\s*\n([\s\S]*?)(?=\n##\s|\n---\s*\n|$)/);
+        if (clarifyMatch) {
+          const questions = [];
+          clarifyMatch[1].split('\n').forEach(line => {
+            const m = line.match(/^(\d+)\.\s+(.+?)(?:\s*→.*)?$/);
+            if (m) questions.push({ index: parseInt(m[1], 10), text: m[2].trim() });
+          });
+          if (questions.length > 0) {
+            const chat = root.querySelector('#agentChat');
+            const intro = document.createElement('div');
+            intro.className = 'cs-msg agent';
+            intro.innerHTML = '<div class="cs-msg-av cs-msg-av--agent">F</div><div class="cs-msg-body">Agent připravil otázky ke story. Odpověz prosím na všechny a pak klikni <strong>Odeslat týmu k validaci</strong>.</div>';
+            if (chat) chat.appendChild(intro);
+            questions.forEach(q => {
+              const card = document.createElement('div');
+              card.className = 'cs-clarify-card';
+              card.dataset.idx = q.index;
+              card.style.cssText = 'margin:6px 0 6px 36px;background:var(--surface-2,#f5f5f5);border:1px solid var(--border);border-radius:10px;padding:12px 14px;display:flex;flex-direction:column;gap:8px;';
+              card.innerHTML = `<div style="font-size:12px;font-weight:600;color:var(--ink-2)">${q.index}. otázka</div>
+                <div style="font-size:13px;color:var(--ink)">${escHtml(q.text)}</div>
+                <textarea class="cs-clarify-input tf-textarea" rows="2" placeholder="Tvoje odpověď…" style="resize:vertical"></textarea>`;
+              if (chat) chat.appendChild(card);
+            });
+            if (chat) chat.scrollTop = chat.scrollHeight;
+          }
+        } else if (data.status === 'needs-clarify') {
+          addChatMsg('Analýza narazila na nejasnosti. Přidej doplňující informace a spusť analýzu znovu.');
+        }
+      }
+
       // Načti epics pro datalist
       if (editable) {
         fetch('/api/issues')
@@ -182,6 +357,12 @@
         submitStory();
       }
 
+      // Auto-spustit clarify při přesměrování z /create-story-2 (?clarify=1)
+      if (new URLSearchParams(location.search).get('clarify') === '1') {
+        history.replaceState(null, '', location.pathname);
+        root.querySelector('#btn-clarify, #btn-start-clarify')?.click();
+      }
+
       // Obnovit polling pokud existuje uložená session (a není hotová)
       if (_sessionId) {
         fetch('/api/session?session_id=' + encodeURIComponent(_sessionId))
@@ -190,13 +371,20 @@
             if (s.status === 'done' || s.status === 'error' || s.error) {
               localStorage.removeItem(_LS_KEY);
               _sessionId = null;
+              loadChatHistory();
             } else {
               setValidating(true);
               setChatInputEnabled(true);
               startPolling();
             }
           })
-          .catch(() => { localStorage.removeItem(_LS_KEY); _sessionId = null; });
+          .catch(() => {
+            localStorage.removeItem(_LS_KEY);
+            _sessionId = null;
+            loadChatHistory();
+          });
+      } else {
+        loadChatHistory();
       }
     })
     .catch(err => {
@@ -225,12 +413,19 @@
   }
 
   // ── Helpers ────────────────────────────────────────────────────────────────
+  const _userAv = document.querySelector('.user-menu__avatar')?.textContent?.trim() || 'BO';
   function addChatMsg(text, role = 'agent') {
     const chat = root.querySelector('#agentChat');
     if (!chat) return;
     const div = document.createElement('div');
     div.className = `cs-msg ${role}`;
-    div.textContent = text;
+    const av = document.createElement('div');
+    av.className = `cs-msg-av cs-msg-av--${role === 'user' ? 'user' : 'agent'}`;
+    av.textContent = role === 'user' ? _userAv : 'F';
+    const body = document.createElement('div');
+    body.className = 'cs-msg-body';
+    body.textContent = text;
+    div.append(role === 'user' ? body : av, role === 'user' ? av : body);
     chat.appendChild(div);
     chat.scrollTop = chat.scrollHeight;
   }
@@ -288,6 +483,17 @@
     }
   }
 
+  async function loadChatHistory() {
+    try {
+        const res = await fetch(`/api/chat?issue_number=${issueNumber}`);
+        if (!res.ok) return;
+        const { messages } = await res.json();
+        const chat = root.querySelector('#agentChat');
+        if (!chat || !Array.isArray(messages) || !messages.length) return;
+        messages.forEach(m => addChatMsg(m.text, m.role === 'user' ? 'user' : 'agent'));
+    } catch {}
+  }
+
   // ── Delete ─────────────────────────────────────────────────────────────────
   async function deleteStory() {
     const idStr = `US-${String(issueNumber).padStart(3,'0')}`;
@@ -317,7 +523,7 @@
     setBtns(true); setStatus('Ukládám změny…');
     try {
       const fd = new FormData();
-      fd.append('data', JSON.stringify({ ...payload, issue_number: issueNumber, wiki_path: _apiData?.wiki_path, story_status: _apiData?.story_status }));
+      fd.append('data', JSON.stringify({ ...payload, issue_number: issueNumber, wiki_path: _apiData?.wiki_path, story_status: _apiData?.story_status, figma_image_cdn_url: root._figmaPreviewCdnUrl || '' }));
       (root._uploadedFiles || []).forEach(f => fd.append('files', f));
       const res = await fetch('/api/update', { method: 'POST', body: fd });
       if (!res.ok) throw new Error((await res.json()).error || res.status);
@@ -350,31 +556,21 @@
         throw new Error(msg || saveRes.status);
       }
 
-      // 2. Spusť analýzu
+      // 2. Zařaď analýzu do fronty
       setStatus('Odesílám agentům…');
-      const analyzeRes = await fetch('/api/analyze', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ issue_number: issueNumber, name: payload.name }) });
+      const analyzeRes = await fetch('/api/queue', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ issue_number: issueNumber, type: 'analysis' }) });
       if (!analyzeRes.ok) {
         const ct = analyzeRes.headers.get('content-type') || '';
         const msg = ct.includes('json') ? (await analyzeRes.json()).error : `HTTP ${analyzeRes.status}`;
         throw new Error(msg || analyzeRes.status);
       }
-      const data = await analyzeRes.json();
-      _sessionId = data.session_id;
-      localStorage.setItem(_LS_KEY, _sessionId);
-      const pos = data.queue_position || 1;
-      addChatMsg(pos > 1 ? `Story zařazena do fronty (pozice ${pos}). Můžeš okno zavřít — analýza poběží na pozadí.` : 'Story odeslána k validaci. Analýza začíná… Můžeš okno zavřít.');
-      startPolling();
+      addChatMsg('Story odeslána k validaci. Analýza začíná… Můžeš okno zavřít.');
+      renderTimelineInline(root.querySelector('#story-timeline-container'), 'draft-start');
+      _waitForSession();
 
-      // Přenačti issue a aktualizuj timeline ihned po odeslání
       fetch(`/api/issues/${issueNumber}`)
         .then(r => r.json())
-        .then(fresh => {
-          _apiData = fresh;
-          const tlContainer = root.querySelector('#story-timeline-container');
-          if (tlContainer && typeof renderTimelineInline === 'function') {
-            renderTimelineInline(tlContainer, storyDataFromApi(fresh).status || '');
-          }
-        })
+        .then(fresh => { _apiData = fresh; })
         .catch(() => {});
     } catch (e) {
       addChatMsg('Chyba: ' + e.message, 'user');
@@ -384,6 +580,7 @@
 
   // ── Polling ────────────────────────────────────────────────────────────────
   const PHASE_LABELS = {
+    'clarify-start':'Clarify agent generuje otázky…','clarify-finished':'Otázky připraveny — stránka se znovu načte.',
     'draft-start':'Product Owner zpracovává zadání…','draft-finished':'Product Owner hotov…',
     'conflict-check-start':'Conflict Detector kontroluje závislosti…',
     'conflict-check-finished':'Konflikty OK…','conflict-check-failed':'⚠ Konflikty nalezeny!',
@@ -439,6 +636,45 @@
     return card;
   }
 
+  async function _waitForSession() {
+    const deadline = Date.now() + 15000;
+    while (Date.now() < deadline) {
+      await new Promise(r => setTimeout(r, 1500));
+      try {
+        const res = await fetch(`/api/session/by-issue?issue_number=${issueNumber}`);
+        if (res.ok) {
+          const d = await res.json();
+          if (d.session_id) {
+            _sessionId = d.session_id;
+            localStorage.setItem(_LS_KEY, _sessionId);
+            startPolling();
+            return;
+          }
+        }
+      } catch {}
+    }
+    addChatMsg('Agent pracuje na pozadí.');
+    setValidating(false);
+
+    // Pokračuj v hledání session na pozadí (fronta může trvat déle než 15s)
+    const bgDeadline = Date.now() + 30 * 60 * 1000;
+    const bgTimer = setInterval(async () => {
+      if (Date.now() > bgDeadline || _sessionId) { clearInterval(bgTimer); return; }
+      try {
+        const res = await fetch(`/api/session/by-issue?issue_number=${issueNumber}`);
+        if (res.ok) {
+          const d = await res.json();
+          if (d.session_id) {
+            clearInterval(bgTimer);
+            _sessionId = d.session_id;
+            localStorage.setItem(_LS_KEY, _sessionId);
+            startPolling();
+          }
+        }
+      } catch {}
+    }, 10000);
+  }
+
   function startPolling() {
     if (_pollTimer) clearInterval(_pollTimer);
     const deadline = Date.now() + 30 * 60 * 1000; // 30 min — fronta + analýza
@@ -482,6 +718,10 @@
           lastPhase = phase;
           const label = PHASE_LABELS[phase];
           if (label) { addChatMsg(label); setStatus(label.replace('…', '')); }
+          const tlContainer = root.querySelector('#story-timeline-container');
+          if (tlContainer && typeof renderTimelineInline === 'function') {
+            renderTimelineInline(tlContainer, phase);
+          }
         }
 
         if (data.status === 'done' || data.status === 'building') {

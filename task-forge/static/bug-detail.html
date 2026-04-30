@@ -168,9 +168,9 @@
           startDevBtn.addEventListener('click', async () => {
             startDevBtn.disabled = true;
             try {
-              const res = await fetch('/api/implement', {
+              const res = await fetch('/api/queue', {
                 method: 'POST', headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ issue_number: issueNumber }),
+                body: JSON.stringify({ issue_number: issueNumber, type: 'development' }),
               });
               const j = await res.json();
               if (!res.ok) { _bugAddChat('Chyba: ' + (j.error || res.status)); startDevBtn.disabled = false; return; }

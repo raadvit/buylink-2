@@ -164,3 +164,18 @@ def all_questions_answered(session_id: str) -> bool:
         if not questions:
             return True
         return all(q.get("answer") is not None for q in questions)
+
+
+def all_sessions() -> dict:
+    with _lock:
+        return {sid: dict(s) for sid, s in _store.items()}
+
+
+def get_session_by_issue(issue_number: int) -> dict | None:
+    with _lock:
+        for sid, session in _store.items():
+            fd = session.get("form_data", {})
+            if (fd.get("issue_number") == issue_number
+                    and session.get("status") not in ("done", "error")):
+                return {"session_id": sid, "status": session["status"]}
+    return None

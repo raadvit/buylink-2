@@ -27,10 +27,10 @@ function autoGrow(el) {
 
 // ── Story timeline widget ──
 const _TIMELINE_STEPS = [
+  { key: 'clarify',        label: 'Clarify' },
   { key: 'draft',          label: 'Draft' },
   { key: 'conflict-check', label: 'Konflikt' },
-  { key: 'ready-for-arch', label: 'Arch review' },
-  { key: 'arch-approved',  label: 'Dev plán' },
+  { key: 'dev-plan',       label: 'Dev plán' },
   { key: 'in-development', label: 'Vývoj' },
   { key: 'ready-for-pr',   label: 'Testing' },
   { key: 'done',           label: 'Done' },
@@ -38,10 +38,14 @@ const _TIMELINE_STEPS = [
 
 const _STATUS_TO_STEP = {
   'new':             '',
-  'draft':           '',
+  'clarify':         '',
+  'needs-clarify':   'draft',
+  'draft':           'clarify',
   'conflict-check':  'draft',
-  'ready-for-arch':  'conflict-check',
-  'validated':       'ready-for-arch',
+  'ready-for-arch':  'conflict-check',  // zpětná kompatibilita
+  'validated':       'dev-plan',
+  'dev-plan':        'conflict-check',
+  'arch-approved':   'dev-plan',        // zpětná kompatibilita
   'in_development':      'in-development',
   'in-development':      'in-development',
   'ready_for_testing':   'in-development',
@@ -54,16 +58,18 @@ const _STATUS_TO_STEP = {
   'blocked':         'draft',
   'cancelled':       'done',
   // granulární -start/-finished stavy
-  'draft-start':              '',
+  'clarify-start':            '',
+  'clarify-finished':         'clarify',
+  'draft-start':              'clarify',
   'draft-finished':           'draft',
   'conflict-check-start':     'draft',
   'conflict-check-finished':  'conflict-check',
   'conflict-check-failed':    'draft',
   'arch-review-start':        'conflict-check',
-  'arch-review-finished':     'ready-for-arch',
-  'dev-plan-start':           'ready-for-arch',
-  'dev-plan-finished':        'arch-approved',
-  'development-start':        'arch-approved',
+  'arch-review-finished':     'dev-plan',
+  'dev-plan-start':           'conflict-check',
+  'dev-plan-finished':        'dev-plan',
+  'development-start':        'dev-plan',
   'development-finish':       'in-development',
   'ready_for_testing-start':  'in-development',
   'ready_for_testing-finish': 'ready-for-pr',
@@ -71,6 +77,7 @@ const _STATUS_TO_STEP = {
 
 // Stavy kde next step NEMÁ svítit modře — uživatel musí explicitně kliknout
 const _STATUS_NO_NEXT_HIGHLIGHT = new Set([
+  'needs-clarify',
   'validated', 'arch-review-finished', 'dev-plan-finished',
   'in_development', 'in-development',
   'ready_for_testing-start', 'ready_for_testing-finish',
@@ -80,22 +87,28 @@ const _STATUS_NO_NEXT_HIGHLIGHT = new Set([
 const _STATUS_BLOCKED_STEP = {
   'conflict-check-failed': 'conflict-check',
   'blocked':               'conflict-check',
+  'needs-clarify':         'draft',
 };
 
 const _STATUS_DEFAULT_LABEL = {
+  'clarify': 'Čeká na vyjasnění požadavků',
+  'needs-clarify': 'Analýza potřebuje doplnění',
   'draft': 'Draft uložen',
   'conflict-check': 'Kontrola konfliktů…',
-  'ready-for-arch': 'Čeká na architekturu',
+  'ready-for-arch': 'Čeká na dev plán',
+  'dev-plan': 'Čeká na dev plán',
   'validated': 'Připraveno k implementaci',
   'in_development': 'Ve vývoji', 'in-development': 'Ve vývoji',
   'ready_for_testing': 'Připraveno k testování', 'ready-for-testing': 'Připraveno k testování',
   'ready-for-pr': 'Připraveno k PR',
   'done': 'Hotovo',
   // granulární -start/-finished stavy
+  'clarify-start':            'Clarify agent generuje otázky…',
+  'clarify-finished':         'Otázky připraveny — čeká na odpovědi',
   'draft-start':              'Product Owner zpracovává zadání',
   'draft-finished':           'Předáváme na konflikt check',
   'conflict-check-start':     'Kontrola konfliktů',
-  'conflict-check-finished':  'Předáváme na arch review',
+  'conflict-check-finished':  'Předáváme na dev plán',
   'conflict-check-failed':    'Konflikty detekovány',
   'arch-review-start':        'Architekt přidává technické anotace',
   'arch-review-finished':     'Připraveno k implementaci',
@@ -172,7 +185,7 @@ function renderTimelineInline(container, storyStatus) {
     if (!noNext && lastIdx >= 0 && idx === lastIdx + 1) cls = 'is-current';
     if (!noNext && lastIdx < 0 && storyStatus && storyStatus !== 'new' && idx === 0) cls = 'is-current';
     if (blockedIdx >= 0 && idx === blockedIdx) cls = 'is-blocked';
-    parts.push('<div class="tl-step ' + cls + '" data-step="' + step.key + '"><div class="tl-dot"></div><div class="tl-lbl">' + step.label + '</div></div>');
+    parts.push('<div class="tl-step ' + cls + '" data-step="' + step.key + '"><div class="tl-dot" title="' + step.key + '"></div><div class="tl-lbl">' + step.label + '</div></div>');
   });
 
   container.innerHTML = '<div class="tl">' + parts.join('') + '</div>';

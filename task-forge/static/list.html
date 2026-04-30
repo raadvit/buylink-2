@@ -56,7 +56,7 @@
   };
 
   const VERIFY_STATUSES = new Set(['draft']);
-  const DEV_STATUSES    = new Set(['validated', 'arch-approved', 'ready-for-arch']);
+  const DEV_STATUSES    = new Set(['validated', 'arch-approved', 'ready-for-arch', 'in_development', 'in-development']);
 
   const TAB_FILTERS = {
     open:          s => s.state !== 'CLOSED',
@@ -94,7 +94,7 @@
       id: formatId(issue.id), title: issue.title, status: si.label,
       epic: issue.epic || '', isBug: issue.type === 'bug',
       cost: issue.cost_usd ?? null, conflicts: 0, agentState: null,
-      duration: issue.duration_str ?? null, detailUrl: issue.type === 'bug' ? `/bug-${issue.id}` : `/us-${issue.id}`,
+      duration: issue.duration_str ?? null, durationDetail: issue.duration_detail ?? null, detailUrl: issue.type === 'bug' ? `/bug-${issue.id}` : `/us-${issue.id}`,
     };
   }
 
@@ -195,9 +195,9 @@
     const issues = _selectedIssues();
     for (const issue of issues) {
       try {
-        const res = await fetch('/api/implement', {
+        const res = await fetch('/api/queue', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ issue_number: issue.id }),
+          body: JSON.stringify({ issue_number: issue.id, type: 'development' }),
         });
         if (!res.ok) throw new Error((await res.json()).error || res.status);
       } catch (e) {
@@ -214,9 +214,9 @@
     const issues = _selectedIssues();
     for (const issue of issues) {
       try {
-        const res = await fetch('/api/analyze', {
+        const res = await fetch('/api/queue', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ issue_number: issue.id, name: issue.title }),
+          body: JSON.stringify({ issue_number: issue.id, type: 'analysis' }),
         });
         if (!res.ok) throw new Error((await res.json()).error || res.status);
       } catch (e) {

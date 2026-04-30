@@ -10,6 +10,8 @@
 <link rel="stylesheet" href="/static/style.css" />
 <style>
   html, body { height: 100%; overflow: hidden; display: flex; flex-direction: column; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .btn-validating-spinner { display:inline-block;width:12px;height:12px;border:2px solid currentColor;border-top-color:transparent;border-radius:50%;animation:spin .7s linear infinite;margin-right:6px;vertical-align:middle; }
 </style>
 <script src="/static/nav.js"></script>
 <script src="/static/story-form.js"></script>
@@ -31,12 +33,46 @@
     try { const d = JSON.parse(sessionStorage.getItem('tf-duplicate') || 'null'); sessionStorage.removeItem('tf-duplicate'); return d; } catch { return null; }
   })();
 
-  initStoryForm(root, _dupeData || {}, {
+  initStoryForm(root, _dupeData || { epic: 'EP-01 Task-forge', role: ['admin'] }, {
     editable: true,
     onSave:   saveForm,
     onSubmit: submitForm,
   });
+  root.querySelector('#btn-clarify')?.addEventListener('click', clarifyForm);
   root.querySelector('#f-title')?.focus();
+
+  // Figma načítání
+  root.querySelector('#btn-figma-load')?.addEventListener('click', async () => {
+    const btnFigma = root.querySelector('#btn-figma-load');
+    const url = root.querySelector('#f-figma-url')?.value?.trim();
+    if (!url) { addChatMsg('Zadej Figma URL.', 'user'); return; }
+    btnFigma.disabled = true;
+    btnFigma.innerHTML = '<span class="btn-validating-spinner"></span>Načíst';
+    addChatMsg('Odesílám Figma URL agentovi…');
+    addChatMsg('Product Owner načítá design přes MCP — může to trvat 20–60 sekund.');
+    try {
+      const res = await fetch('/api/figma-describe', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ figma_url: url }),
+      });
+      const j = await res.json();
+      if (!res.ok) throw new Error(j.error || res.status);
+      const shows = root.querySelector('#f-shows');
+      if (shows) { shows.value = j.description; _sfAutoGrow(shows); shows.dispatchEvent(new Event('input')); }
+      const behaves = root.querySelector('#f-behaves');
+      if (behaves && j.behaves) { behaves.value = j.behaves; _sfAutoGrow(behaves); behaves.dispatchEvent(new Event('input')); }
+      const preview = root.querySelector('#figma-preview');
+      if (preview && j.image_url) { preview.src = j.image_url; preview.style.display = 'block'; }
+      root._figmaPreviewCdnUrl = j.image_url || '';
+      addChatMsg('✓ Popis načten z Figmy a vyplněn do polí „Co se zobrazuje" a „Jak se to chová".');
+    } catch (e) {
+      addChatMsg('Chyba při načítání Figma: ' + e.message, 'user');
+    } finally {
+      btnFigma.disabled = false;
+      btnFigma.textContent = 'Načíst';
+    }
+  });
 
   // Načti epics pro datalist
   fetch('/api/issues')
@@ -49,12 +85,19 @@
     .catch(() => {});
 
   // ── Helpers ────────────────────────────────────────────────────────────────
+  const _userAv = document.querySelector('.user-menu__avatar')?.textContent?.trim() || 'BO';
   function addChatMsg(text, role = 'agent') {
     const chat = root.querySelector('#agentChat');
     if (!chat) return;
     const div = document.createElement('div');
     div.className = `cs-msg ${role}`;
-    div.textContent = text;
+    const av = document.createElement('div');
+    av.className = `cs-msg-av cs-msg-av--${role === 'user' ? 'user' : 'agent'}`;
+    av.textContent = role === 'user' ? _userAv : 'F';
+    const body = document.createElement('div');
+    body.className = 'cs-msg-body';
+    body.textContent = text;
+    div.append(role === 'user' ? body : av, role === 'user' ? av : body);
     chat.appendChild(div);
     chat.scrollTop = chat.scrollHeight;
   }
@@ -65,8 +108,9 @@
   }
 
   function setBtns(disabled) {
-    root.querySelector('#btn-save')  ?.toggleAttribute('disabled', disabled);
-    root.querySelector('#btn-submit')?.toggleAttribute('disabled', disabled);
+    root.querySelector('#btn-save')    ?.toggleAttribute('disabled', disabled);
+    root.querySelector('#btn-submit')  ?.toggleAttribute('disabled', disabled);
+    root.querySelector('#btn-clarify') ?.toggleAttribute('disabled', disabled);
   }
 
   // ── Save draft ─────────────────────────────────────────────────────────────
@@ -81,7 +125,7 @@
     setBtns(true); setStatus('Ukládám draft…');
     try {
       const fd = new FormData();
-      const body = { ...payload, type: 'story' };
+      const body = { ...payload, type: 'story', figma_image_cdn_url: root._figmaPreviewCdnUrl || '' };
       if (_issueNumber) { body.issue_number = _issueNumber; body.wiki_path = _wikiPath; }
       fd.append('data', JSON.stringify(body));
       (root._uploadedFiles || []).forEach(f => fd.append('files', f));
@@ -89,6 +133,33 @@
       if (!res.ok) throw new Error((await res.json()).error || res.status);
       const data = await res.json();
       window.location = `/us-${data.issue_number}`;
+    } catch (e) {
+      addChatMsg('Chyba při ukládání: ' + e.message, 'user');
+      setStatus('Chyba');
+      setBtns(false);
+    }
+  }
+
+  // ── Clarify — uloží a přesměruje na detail, kde se auto-spustí clarify agent ──
+  async function clarifyForm() {
+    const payload = root._getFormData();
+    payload.name = payload.title; delete payload.title;
+    if (!payload.name) {
+      const titleEl = root.querySelector('#f-title');
+      if (titleEl) { titleEl.style.borderColor = 'var(--danger)'; titleEl.style.boxShadow = '0 0 0 3px var(--danger-2)'; titleEl.scrollIntoView({ behavior:'smooth', block:'center' }); }
+      return;
+    }
+    setBtns(true); setStatus('Ukládám…');
+    try {
+      const fd = new FormData();
+      const body = { ...payload, type: 'story', figma_image_cdn_url: root._figmaPreviewCdnUrl || '' };
+      if (_issueNumber) { body.issue_number = _issueNumber; body.wiki_path = _wikiPath; }
+      fd.append('data', JSON.stringify(body));
+      (root._uploadedFiles || []).forEach(f => fd.append('files', f));
+      const res = await fetch('/api/save', { method: 'POST', body: fd });
+      if (!res.ok) throw new Error((await res.json()).error || res.status);
+      const data = await res.json();
+      window.location = `/us-${data.issue_number}?clarify=1`;
     } catch (e) {
       addChatMsg('Chyba při ukládání: ' + e.message, 'user');
       setStatus('Chyba');
@@ -109,7 +180,7 @@
     setBtns(true); setStatus('Ukládám a přesměrovávám…');
     try {
       const fd = new FormData();
-      const body = { ...payload, type: 'story' };
+      const body = { ...payload, type: 'story', figma_image_cdn_url: root._figmaPreviewCdnUrl || '' };
       if (_issueNumber) { body.issue_number = _issueNumber; body.wiki_path = _wikiPath; }
       fd.append('data', JSON.stringify(body));
       (root._uploadedFiles || []).forEach(f => fd.append('files', f));

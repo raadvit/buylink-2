@@ -145,7 +145,7 @@ function renderTableRow(s) {
       <div class="cell-epic col-epic">${escapeHTML(s.epic)}</div>
       <div class="col-type">${typePill}</div>
       <div class="col-cost cell-cost">${formatCost(s.cost)}</div>
-      <div class="col-duration">${escapeHTML(s.duration ?? '–')}</div>
+      <div class="col-duration"${s.durationDetail ? ` title="${escapeHTML(s.durationDetail)}"` : ''}>${escapeHTML(s.duration ?? '–')}</div>
     </div>`;
 }
 

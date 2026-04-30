@@ -53,14 +53,19 @@ function storyDataFromApi(apiData) {
     status:   apiData.story_status || meta['status'] || '',
     role:     roles,
     why:      sections['Why / Business Goal'] || sections['Business popis'] || sections['Business Context'] || '',
-    shows:    sections['Co se zobrazuje'] || '',
-    behaves:  sections['Jak se to chová']  || '',
+    shows:     sections['Co se zobrazuje'] || '',
+    behaves:   sections['Jak se to chová']  || '',
+    userStory: sections['User Story'] || '',
     risk:     sections['Rizikové situace / Nestandardní scénáře'] || '',
     open:     sections['Otevřené otázky / Blokery'] || sections['Open Questions'] || '',
     ac:            sections['Acceptance Criteria'] || sections['Akceptační kritéria'] || '',
+    testCases:     sections['Test cases'] || sections['Test Cases'] || '',
+    agentNotes:    sections['Poznámky agenta'] || '',
     techNotes:     sections['Technické poznámky (Architekt)'] || sections['Technické poznámky'] || sections['Architecture Notes'] || '',
     domainChanges: sections['Domain Changes'] || sections['Doménové změny'] || '',
     implPlan:      sections['Implementation Plan'] || sections['Implementační plán'] || '',
+    figma_url:        meta['figma'] || '',
+    figma_image_path: meta['figma_image'] || '',
   };
 }
 
@@ -79,6 +84,22 @@ function sfField({ id, label, required, help, value, placeholder, type, editable
     return `<div class="tf-field">
       <label class="tf-label">${label} ${reqMark}<span class="si" id="si-${id}"></span></label>
       <div class="tf-chips" id="${id}">${chips}</div>
+    </div>`;
+  }
+
+  if (type === 'figma-url') {
+    if (!editable) {
+      return `<div class="tf-field">
+        <img id="figma-preview" src="" alt="Figma preview" style="display:none;max-width:100%;border-radius:8px;border:1px solid var(--border)" />
+      </div>`;
+    }
+    return `<div class="tf-field">
+      <label class="tf-label" for="f-figma-url">Figma URL</label>
+      <div style="display:flex;gap:8px;align-items:center">
+        <input class="tf-input" id="f-figma-url" type="url" placeholder="https://figma.com/design/…?node-id=…" style="flex:1" />
+        <button class="tf-btn tf-btn-secondary" type="button" id="btn-figma-load">Načíst</button>
+      </div>
+      <img id="figma-preview" src="" alt="Figma preview" style="display:none;max-width:100%;margin-top:10px;border-radius:8px;border:1px solid var(--border)" />
     </div>`;
   }
 
@@ -126,6 +147,7 @@ function initStoryForm(container, data = {}, opts = {}) {
   const fields = [
     sfField({ id:'f-why', label:'Why / Business Goal', required:true,
       value:data.why, placeholder:'Proč to děláme?', type:'textarea', editable }),
+    sfField({ id:'f-figma-url', label:'Figma URL', type:'figma-url', editable }),
     sfField({ id:'sf-upload', label:'Attachment', type:'attachment', editable }),
     `<div class="sf-inline-group">
        ${sfField({ id:'f-epic', label:'Epic', required:true,
@@ -133,14 +155,18 @@ function initStoryForm(container, data = {}, opts = {}) {
        ${sfField({ id:'roles', label:'Role', required:true,
          type:'chips', options:data.role, editable })}
      </div>`,
-    sfField({ id:'f-shows', label:'Co se zobrazuje', required:true,
-      value:data.shows, placeholder:'Co uživatel uvidí na obrazovce?', type:'textarea', editable }),
-    sfField({ id:'f-behaves', label:'Jak se to chová', required:true,
-      value:data.behaves, placeholder:'Interakce, stavy, validace…', type:'textarea', editable }),
-    sfField({ id:'f-risk', label:'Rizikové situace / Nestandardní scénáře',
-      value:data.risk, placeholder:'Edge cases, prázdné stavy, chyby…', type:'textarea', editable }),
-    sfField({ id:'f-open', label:'Otevřené otázky / Blokery',
-      value:data.open, placeholder:'Co zatím není rozhodnuto nebo může bránit realizaci.', type:'textarea', editable }),
+    editable
+      ? sfField({ id:'f-shows', label:'Co se zobrazuje', required:true,
+          value:data.shows, placeholder:'Co uživatel uvidí na obrazovce?', type:'textarea', editable:true })
+      : (data.shows ? sfField({ id:'f-shows', label:'Co se zobrazuje', value:data.shows, type:'textarea', editable:false }) : ''),
+    editable
+      ? sfField({ id:'f-behaves', label:'Jak se to chová', required:true,
+          value:data.behaves, placeholder:'Interakce, stavy, validace…', type:'textarea', editable:true })
+      : (data.behaves ? sfField({ id:'f-behaves', label:'Jak se to chová', value:data.behaves, type:'textarea', editable:false }) : ''),
+    (editable || data.risk) ? sfField({ id:'f-risk', label:'Rizikové situace / Nestandardní scénáře',
+      value:data.risk, placeholder:'Edge cases, prázdné stavy, chyby…', type:'textarea', editable }) : '',
+    (editable || data.open) ? sfField({ id:'f-open', label:'Otevřené otázky / Blokery',
+      value:data.open, placeholder:'Co zatím není rozhodnuto nebo může bránit realizaci.', type:'textarea', editable }) : '',
     sfField({ id:'f-ac', label:'Akceptační kritéria',
       help: editable ? 'Nech prázdné — agent vygeneruje.' : '',
       value:data.ac, placeholder:'Seznam podmínek, které musí být splněny.', type:'textarea', editable }),
@@ -158,6 +184,8 @@ function initStoryForm(container, data = {}, opts = {}) {
     fields.push(sfField({ id:'f-impl', label:'Implementation Plan',
       value:data.implPlan, type:'textarea', editable: false }));
   }
+  if (!editable && data.testCases)  { fields.push(sfField({ id:'f-test-cases',  label:'Test cases',      value:data.testCases,  type:'textarea', editable:false })); }
+  if (!editable && data.agentNotes) { fields.push(sfField({ id:'f-agent-notes', label:'Poznámky agenta', value:data.agentNotes, type:'textarea', editable:false })); }
 
   const saveLabel   = opts.saveLabel   || 'Uložit na později';
   const submitLabel = opts.submitLabel || 'Odeslat týmu k validaci →';
@@ -178,16 +206,12 @@ function initStoryForm(container, data = {}, opts = {}) {
            : isDone
            ? `<button class="tf-btn tf-btn-secondary" type="button" id="btn-create-bug">Vytvořit bug</button>`
            : editable ? `<button class="tf-btn tf-btn-secondary" type="button" id="btn-save">${saveLabel}</button>
-              <button class="tf-btn tf-btn-primary" type="button" id="btn-submit">${submitLabel}</button>` : ''}
+              <button class="tf-btn tf-btn-secondary" type="button" id="btn-clarify">✦ Clarify</button>
+              ${data.status === 'clarify' ? `<button class="tf-btn tf-btn-primary" type="button" id="btn-submit">${submitLabel}</button>` : ''}` : ''}
        </div>`
     : '';
 
   const agentStatus = editable ? 'Aktivní · čeká na vyplnění' : `Status: ${sfEsc(data.status || '—')}`;
-  const agentInitMsg = editable
-    ? `<div class="cs-msg agent">Ahoj 👋 Pomůžu ti převést potřebu PO do jasné, strukturované user story.</div>
-       <div class="cs-msg agent">Začni názvem požadavku — krátce, věcně. Ostatní pole vyplním nebo navrhnu.</div>`
-    : '';
-
   container.innerHTML = `
     <div class="cs-layout">
       <div class="cs-body">
@@ -214,24 +238,33 @@ function initStoryForm(container, data = {}, opts = {}) {
                 ${agentStatus}
               </div>
             </div>
-            ${!editable && data.status === 'validated' ? `<button id="btn-start-dev" class="btn-start-dev">&#9654; Spustit vývoj</button>` : ''}
+            ${!editable && data.status === 'new' ? `<button id="btn-start-clarify" class="btn-start-dev">&#9654; Spustit Clarify</button>` : ''}
+            ${!editable && (data.status === 'validated' || data.status === 'dev-plan' || data.status === 'ready-for-arch') ? `<button id="btn-start-dev" class="btn-start-dev">&#9654; Spustit vývoj</button>` : ''}
           </div>
-          <div class="cs-chat" id="agentChat">${agentInitMsg}</div>
+          <div class="cs-chat" id="agentChat"></div>
           <div class="cs-chat-input-wrap">
             <div class="cs-chat-input">
-              <input type="text" placeholder="Zeptej se agenta…" id="agentInput" />
-              <button class="tf-btn tf-btn-primary" style="padding:5px 10px;font-size:12px" type="button" id="agentSend">Odeslat</button>
+              <input type="text" placeholder="Zeptej se agenta…" id="agentInput"${editable && (!data.status || data.status === 'new') ? ' disabled' : ''} />
+              <button class="tf-btn tf-btn-primary" style="padding:5px 10px;font-size:12px" type="button" id="agentSend"${editable && (!data.status || data.status === 'new') ? ' disabled' : ''}>Odeslat</button>
             </div>
-            <div class="cs-quick-btns">
-              <button class="cs-quick-btn" type="button">Vygeneruj AC</button>
-              <button class="cs-quick-btn" type="button">Najdi duplicity</button>
-              <button class="cs-quick-btn" type="button">Odhadni složitost</button>
-            </div>
+            ${!editable && (data.status === 'clarify' || data.status === 'needs-clarify') ? `<div class="cs-quick-btns"><button class="tf-btn tf-btn-primary" type="button" id="btn-submit-team">Odeslat týmu k validaci</button></div>` : ''}
           </div>
         </aside>
       </div>
     </div>
   `;
+
+  // Pre-fill figma URL a preview
+  if (editable && data.figma_url) {
+    const fi = container.querySelector('#f-figma-url');
+    if (fi) fi.value = data.figma_url;
+  }
+  if (data.figma_image_path) {
+    const fp = container.querySelector('#figma-preview');
+    if (fp) { fp.src = `/wiki/stories/${data.figma_image_path}`; fp.style.display = 'block'; }
+  }
+  container._figmaPreviewCdnUrl = '';
+  container._figmaLocalPath = data.figma_image_path || '';
 
   // Auto-grow všech textarí (editable i read-only)
   container.querySelectorAll('textarea').forEach(el => _sfAutoGrow(el));
@@ -246,15 +279,17 @@ function initStoryForm(container, data = {}, opts = {}) {
   // Expose helpers for read-back
   container._getFormData = function() {
     return {
-      title:  (container.querySelector('#f-title')?.value || '').trim(),
-      epic:   (container.querySelector('#f-epic')?.value  || '').trim(),
-      role:   Array.from(container.querySelectorAll('#roles .tf-chip.on')).map(c => c.dataset.role),
-      why:    (container.querySelector('#f-why')?.value   || '').trim(),
-      what:   (container.querySelector('#f-shows')?.value  || '').trim(),
-      how:    (container.querySelector('#f-behaves')?.value|| '').trim(),
-      scope:  (container.querySelector('#f-risk')?.value  || '').trim(),
-      deps:   (container.querySelector('#f-open')?.value  || '').trim(),
-      ac:     (container.querySelector('#f-ac')?.value    || '').trim(),
+      title:            (container.querySelector('#f-title')?.value    || '').trim(),
+      epic:             (container.querySelector('#f-epic')?.value     || '').trim(),
+      role:             Array.from(container.querySelectorAll('#roles .tf-chip.on')).map(c => c.dataset.role),
+      why:              (container.querySelector('#f-why')?.value      || '').trim(),
+      what:             (container.querySelector('#f-shows')?.value    || '').trim(),
+      how:              (container.querySelector('#f-behaves')?.value  || '').trim(),
+      scope:            (container.querySelector('#f-risk')?.value     || '').trim(),
+      deps:             (container.querySelector('#f-open')?.value     || '').trim(),
+      ac:               (container.querySelector('#f-ac')?.value       || '').trim(),
+      figma_url:        (container.querySelector('#f-figma-url')?.value || '').trim(),
+      figma_image_path: container._figmaLocalPath || '',
     };
   };
 
