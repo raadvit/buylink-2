@@ -2,6 +2,7 @@ import json as _json
 import os
 import pathlib
 import re
+import ssl
 import subprocess
 import time
 import urllib.error
@@ -9,6 +10,8 @@ import urllib.parse
 import urllib.request
 import uuid
 from datetime import date, datetime
+
+import certifi
 
 import store_state
 from issue_provider import get_provider
@@ -931,6 +934,10 @@ def launch_analyze_agent(session_id: str, issue_number: int, store) -> None:
     store.update_session(session_id, status="done", validation_phase="done")
 
 
+def _ssl_context() -> ssl.SSLContext:
+    return ssl.create_default_context(cafile=certifi.where())
+
+
 def _parse_figma_url(url: str) -> tuple[str, str | None]:
     m = re.search(r'figma\.com/(?:file|design)/([A-Za-z0-9]+)', url)
     if not m:
@@ -952,7 +959,7 @@ def _fetch_figma_node(file_key: str, node_id: str | None) -> dict:
     else:
         api_url = f"https://api.figma.com/v1/files/{file_key}?depth=2"
     req = urllib.request.Request(api_url, headers={"X-Figma-Token": api_key})
-    with urllib.request.urlopen(req, timeout=30) as resp:
+    with urllib.request.urlopen(req, timeout=30, context=_ssl_context()) as resp:
         return _json.loads(resp.read().decode())
 
 
@@ -998,12 +1005,13 @@ def _fetch_figma_image(file_key: str, node_id: str) -> tuple[str, str]:
         f"?ids={urllib.parse.quote(node_id)}&format=png&scale=1"
     )
     req = urllib.request.Request(api_url, headers={"X-Figma-Token": api_key})
-    with urllib.request.urlopen(req, timeout=30) as resp:
+    ctx = _ssl_context()
+    with urllib.request.urlopen(req, timeout=30, context=ctx) as resp:
         data = _json.loads(resp.read().decode())
     cdn_url = data.get("images", {}).get(node_id)
     if not cdn_url:
         raise ValueError("Figma nevrátilo image URL pro daný node")
-    with urllib.request.urlopen(cdn_url, timeout=30) as resp:
+    with urllib.request.urlopen(cdn_url, timeout=30, context=ctx) as resp:
         image_b64 = base64.b64encode(resp.read()).decode()
     return cdn_url, image_b64
 

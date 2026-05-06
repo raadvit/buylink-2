@@ -18,7 +18,7 @@ Registr všech user stories projektu. Source of truth pro status každé story.
 |---|---|---|
 | `id` | Identifikátor story | `US-NNN` (NNN tříciferné, padding nulami) |
 | `title` | Krátký název | string, max 80 znaků |
-| `epic` | Doménová oblast nebo modul | např. `EP-01`, `EP-03` (volný text) |
+| `epic` | Doménová oblast nebo modul | např. `EP-XX` (volný text, dle `project.md`) |
 | `status` | Aktuální stav | viz status flow níže |
 | `reads` | Sekce V2, které story čte | `domain:section, api:section` (čárkou oddělené) |
 | `writes` | Sekce V2, které story zapisuje / mění | stejný formát |

@@ -5,6 +5,42 @@
 
 Provede validační pipeline pro existující story: Product Owner → Conflict Detector → Architekt.
 
+## Live komunikace s uživatelem (IPC)
+
+`TF_SESSION_ID` a `TF_API_PORT` jsou nastaveny v prostředí (env). Používej je pro live zprávy a otázky — uživatel je vidí v chatu okamžitě.
+
+**Poslat zprávu** (informativní, nezastaví pipeline):
+```bash
+curl -sf -X POST "http://localhost:${TF_API_PORT}/api/session/${TF_SESSION_ID}/push" \
+  -H "Content-Type: application/json" \
+  -d "{\"type\":\"message\",\"text\":\"ZPRÁVA\",\"agent\":\"JMÉNO\"}" || true
+```
+
+**Zeptat se uživatele** (zastaví pipeline dokud neodpoví):
+```bash
+QID=$(python3 -c "import uuid; print(uuid.uuid4())")
+curl -sf -X POST "http://localhost:${TF_API_PORT}/api/session/${TF_SESSION_ID}/push" \
+  -H "Content-Type: application/json" \
+  -d "{\"type\":\"question\",\"text\":\"OTÁZKA\",\"agent\":\"JMÉNO\",\"question_id\":\"${QID}\"}" || true
+ANSWER="" TF_WAIT=0
+while [ -z "$ANSWER" ] && [ "$TF_WAIT" -lt 300 ]; do
+  sleep 2; TF_WAIT=$((TF_WAIT + 1))
+  ANSWER=$(curl -sf "http://localhost:${TF_API_PORT}/api/session/${TF_SESSION_ID}/answer/${QID}" \
+    | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('answer','') if d.get('answered') else '')" 2>/dev/null || echo "")
+done
+if [ -z "$ANSWER" ]; then
+  curl -sf -X POST "http://localhost:${TF_API_PORT}/api/session/${TF_SESSION_ID}/push" \
+    -H "Content-Type: application/json" \
+    -d "{\"type\":\"message\",\"text\":\"Odpověď nedorazila (10 min), rozhoduji sám na základě dostupného kontextu.\",\"agent\":\"JMÉNO\"}" || true
+fi
+```
+
+Kdy posílat zprávy:
+- PO: před každou fází co děláš (`"Product Owner kontroluje srozumitelnost…"`)
+- PO: pokud záměr není jasný — zeptej se otázkou místo domýšlení
+- CD: při nalezení konfliktu před zápisem do wiki
+- Arch: při klíčových rozhodnutích o architektuře
+
 ## Vstup
 
 `$ARGUMENTS` = číslo issue (např. `42`). Převeď na `US-{id:03d}` (42 → `US-042`).
@@ -24,14 +60,41 @@ Načti `wiki/stories/US-{id}.md`.
 
 Přečti `.claude/config.md` — hodnoty `generate_acceptance_criteria` a `architect_creates_implementation_plan`.
 
+Pokud wiki soubor obsahuje řádek `- Figma_image: <cesta>`, načti soubor `wiki/stories/<cesta>` pomocí Read nástroje — obrázek předej Product Ownerovi jako vizuální kontext ve fázi 2.
+
 ### 2. Product Owner
 
 Spusť agenta `product-owner` (instrukce v `.memory-system/team/product-owner.md`) s:
 - Obsahem story
+- Figma screenshot (pokud existuje — viz krok 1)
 - `.memory-system/V1-static-context/project.md`
 - `.memory-system/V2-shared-truth/story_register.md`
 
+**Před analýzou zkontroluj sekci `## Clarify`** ve story souboru. Pokud existuje:
+- Přečti otázky a jejich odpovědi (formát `1. otázka → odpověď`)
+- Zapracuj odpovědi do analýzy — použij je jako kontextová rozhodnutí PO
+- Informuj uživatele které odpovědi jsi použil:
+```bash
+curl -sf -X POST "http://localhost:${TF_API_PORT}/api/session/${TF_SESSION_ID}/push" \
+  -H "Content-Type: application/json" \
+  -d "{\"type\":\"message\",\"text\":\"Nalezeny odpovědi na clarify otázky — zapracovávám do analýzy.\",\"agent\":\"Product Owner\"}" || true
+```
+
 PO ověří srozumitelnost story a doplní `reads_sections` / `writes_sections` (sekce domain modelu, které story čte/mění).
+
+**PO nesmí klást otázky uživateli v chatu.** Pokud story obsahuje zásadní nejasnosti bez odpovědí v sekci `## Clarify`, nastav `needs-clarify` a zapiš otázky:
+
+```bash
+# Přidej otázky do sekce ## Clarify v wiki souboru (nová podsekce s datem)
+# Potom nastav status:
+sed -i '' 's/^- Status: .*/- Status: needs-clarify/' wiki/stories/US-{id}.md
+python3 task-forge/status_history.py append wiki/stories/US-{id}.md needs-clarify
+# Pošli zprávu:
+curl -sf -X POST "http://localhost:${TF_API_PORT}/api/session/${TF_SESSION_ID}/push" \
+  -H "Content-Type: application/json" \
+  -d "{\"type\":\"message\",\"text\":\"Story má zásadní nejasnosti. Odpověz na otázky v sekci Clarify a spusť analýzu znovu.\",\"agent\":\"Product Owner\"}" || true
+# Zastav pipeline — přejdi na krok 5
+```
 
 Po dokončení přečti `total_tokens` z bloku `<usage>` a ulož:
 - `tokens_po = total_tokens`
@@ -60,12 +123,20 @@ Výstup agenta je JSON:
 
 Pokud `conflict`:
 - Přidej sekci `## Konflikty` do wiki souboru s popisem konfliktů
-- Aktualizuj status na `blocked`:
+- Přečti `conflict_check_iterations` z frontmatteru wiki souboru (default 0)
+- Inkrementuj counter: `conflict_check_iterations += 1`
+- Pokud `conflict_check_iterations >= 3`: nastav `blocked`, jinak `draft`
   ```bash
+  # Pro draft (< 3 iterace) — vrátit uživateli k opravě:
+  sed -i '' 's/^conflict_check_iterations: .*/conflict_check_iterations: N/; s/^- Status: .*/- Status: draft/; s/^status: .*/status: draft/' wiki/stories/US-{id}.md
+  python3 task-forge/status_history.py append wiki/stories/US-{id}.md draft
+
+  # Pro blocked (>= 3 iterace):
   sed -i '' 's/^- Status: .*/- Status: blocked/; s/^status: .*/status: blocked/' wiki/stories/US-{id}.md
-  python3 task-forge/status_history.py wiki/stories/US-{id}.md blocked
+  python3 task-forge/status_history.py append wiki/stories/US-{id}.md blocked
   python3 task-forge/status_history.py metrics wiki/stories/US-{id}.md
   ```
+- Pošli zprávu uživateli přes IPC s popisem konfliktu a navrhovaným řešením
 - Přejdi na krok 5 (zapiš metriky a zastav)
 
 Pokud `ok`:

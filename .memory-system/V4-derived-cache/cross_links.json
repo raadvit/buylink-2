@@ -2,7 +2,7 @@
   "_metadata": {
     "description": "Pre-computed dependencies between stories and V2 sections. Maintained by Conflict Detector after each pass.",
     "version": "1.0",
-    "last_updated": "2026-04-27",
+    "last_updated": null,
     "invalidation_policy": "stale-tolerant; Conflict Detector cross-checks against live story_register.md on every read"
   },
   "stories": {},

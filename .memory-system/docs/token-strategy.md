@@ -32,7 +32,7 @@ Po validaci pilotu rekalibrace, případně přechod na **PRODUKCE** režim s vy
 | backend-developer | L2 | claude-haiku-4-5-20251001 |
 | frontend-developer | L2 | claude-haiku-4-5-20251001 |
 | code-reviewer | L2 | claude-haiku-4-5-20251001 |
-
+[metrics.md](metrics.md)
 ## Volitelní agenti (INACTIVE v této verzi)
 
 | Agent | Tier | Plánovaný model |

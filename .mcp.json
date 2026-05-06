@@ -1,5 +1,9 @@
 {
   "mcpServers": {
+    "mcp-atlassian": {
+      "command": "uvx",
+      "args": ["mcp-atlassian"]
+    },
     "figma": {
       "command": "npx",
       "args": ["-y", "figma-mcp"],

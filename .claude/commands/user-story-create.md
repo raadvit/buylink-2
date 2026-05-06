@@ -14,16 +14,37 @@ Proveď uživatele strukturovaným zadáním nové feature, zvaliduj zadání s 
 4. **Business popis** — "Jako [role] chci [akce] aby [přínos]"
 5. **Co se zobrazuje** — pole, sekce, komponenty viditelné na obrazovce
 6. **Jak se to chová** — interakce, podmíněná logika, stavy, validace
-7. **Přílohy** — screenshoty, HTML prototypy, diagramy (volitelné — uživatel může přeskočit)
+7. **Přílohy** — Figma URL, screenshoty, HTML prototypy, diagramy (volitelné — uživatel může přeskočit)
 8. **Out of scope / after MVP** — co záměrně neřešíme (volitelné)
 9. **Závislosti a otevřené otázky** — co zatím nevíš (volitelné)
 
 Pokud `$ARGUMENTS` obsahuje všechna povinná pole (1–6), přeskoč otázky a vytvoř story přímo.
 
+**Figma URL v příloze:** Pokud uživatel zadá Figma URL (obsahuje `figma.com`), automaticky spusť Figma analýzu (viz sekce níže) a navrhni předvyplnění polí 5 a 6 před pokračováním.
+
 ## Postup
 
 ### 1. Sbírání vstupů
 Ptej se po jedné otázce najednou. Pokud uživatel napíše "vygeneruj" nebo "viz výše", odvoď odpověď z kontextu.
+
+### 1b. Figma analýza (pokud uživatel zadal Figma URL)
+
+Pokud uživatel zadal URL obsahující `figma.com` (ať už v příloze nebo kdekoliv v odpovědích):
+
+1. Zavolej MCP nástroj Figma pro načtení dat ze souboru. Předej celou URL včetně případného `node-id`.
+2. Analyzuj vracenou strukturu — identifikuj:
+   - **Obrazovky / framy** — co jsou hlavní pohledy/stavy
+   - **Komponenty** — tlačítka, formulářová pole, tabulky, karty, navigační prvky
+   - **Texty a popisky** — labely, placeholder texty, nadpisy, chybové hlášky
+   - **Podmíněné stavy** — loading, prázdný stav, chybový stav, hover/active
+3. Na základě analýzy **navrhni předvyplnění** pro pole:
+   - **Co se zobrazuje** (pole 5) — výčet viditelných prvků na obrazovce
+   - **Jak se to chová** (pole 6) — interakce, validace, stavy odvozené z designu
+4. Zobraz uživateli navrhovaný obsah obou polí a zeptej se: *„Chceš tyto návrhy upravit, nebo je přijmout?"*
+5. Počkej na odpověď. Pokud uživatel upravuje, uprav podle instrukcí. Pokud přijme, pokračuj dál.
+6. Ulož Figma URL jako přílohu v sekci Assets: `Figma: {URL}`
+
+Pokud Figma MCP není dostupný (chybí FIGMA_API_KEY), informuj uživatele: *„Figma MCP není nakonfigurován — nastav proměnnou FIGMA_API_KEY a restartuj Claude Code."* Pokračuj bez analýzy.
 
 ### 2. Validace týmem (product-owner agent)
 Po získání všech povinných vstupů spusť interní review:

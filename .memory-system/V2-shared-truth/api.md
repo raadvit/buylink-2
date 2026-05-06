@@ -1,6 +1,6 @@
 # API Contract
 
-REST API BuyLink backendu (Flask, port TBD).
+REST API kontrakt projektového backendu. Konkrétní stack a base URL viz `V1-static-context/project.md`.
 
 ## Pravidla pro tento soubor
 

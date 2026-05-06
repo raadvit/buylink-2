@@ -1,6 +1,6 @@
 # Domain Model
 
-Entity, jejich atributy, stavy a operace pro BuyLink.
+Entity, jejich atributy, stavy a operace projektu. Identitu projektu drží `V1-static-context/project.md`.
 
 ## Pravidla pro tento soubor
 
