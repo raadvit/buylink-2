@@ -1129,13 +1129,16 @@ _figma_image_cache: dict[str, bytes] = {}
 
 def _save_figma_image_from_cdn(cdn_url: str, wiki_path: str, epic: str) -> str | None:
     """Uloží Figma obrázek do assets. Použije cache, pokud je dostupná; jinak stáhne z CDN."""
+    import ssl as _ssl
     import urllib.request as _ur
+    import certifi as _certifi
     cached = _figma_image_cache.get(cdn_url)
     if not cached:
         if not any(cdn_url.startswith(p) for p in _FIGMA_CDN_PREFIXES):
             return None
         try:
-            with _ur.urlopen(cdn_url, timeout=30) as resp:
+            ctx = _ssl.create_default_context(cafile=_certifi.where())
+            with _ur.urlopen(cdn_url, timeout=30, context=ctx) as resp:
                 cached = resp.read()
         except Exception:
             return None

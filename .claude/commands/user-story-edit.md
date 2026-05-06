@@ -38,6 +38,21 @@ Ukaž mu stávající hodnoty a zeptej se co chce změnit. Nabídni možnosti:
 
 Ptej se po jedné změně najednou, nebo nech uživatele popsat vše najednou.
 
+### 2b. Figma analýza (pokud uživatel přidává Figma URL)
+
+Pokud uživatel zadá URL obsahující `figma.com` jako součást změn:
+
+1. Zavolej MCP nástroj Figma pro načtení dat ze souboru.
+2. Analyzuj strukturu — identifikuj obrazovky, komponenty, texty, podmíněné stavy.
+3. Navrhni předvyplnění / rozšíření pro pole:
+   - **Description** — co se zobrazuje, viditelné prvky
+   - **Acceptance criteria** — podmínky odvozené z designu
+4. Zobraz návrhy uživateli: *„Navrhuji toto doplnění na základě Figmy — chceš upravit nebo přijmout?"*
+5. Počkej na odpověď, uprav dle instrukcí nebo přijmi.
+6. Ulož URL jako přílohu v sekci Assets: `Figma: {URL}`
+
+Pokud Figma MCP není dostupný, informuj: *„Nastav FIGMA_API_KEY a restartuj Claude Code."*
+
 ### 3. Aktualizuj wiki soubor
 
 Uprav `wiki/stories/[ID].md` — změň pouze pole, která uživatel specifikoval. Aktualizuj `Změněno:` na dnešní datum.

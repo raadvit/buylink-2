@@ -1,6 +1,13 @@
 # Instrukce pro Claude Code
 
 ## Setup nového projektu
+- pustit `uv pip install certifi`
+
+
+### Předpoklady
+
+- **`uv`** — `curl -LsSf https://astral.sh/uv/install.sh | sh`
+- **`gh`** — GitHub CLI (`brew install gh`)
 
 ### MCP — Figma
 
@@ -25,14 +32,48 @@ Soubor `.claude/settings.local.json` — přidat:
 }
 ```
 
-Proměnné prostředí — přidat do `.env` (nezavazovat do gitu):
+### MCP — Jira (Atlassian)
+
+`.mcp.json` již přítomen. Do `.env` přidat:
+```
+JIRA_URL=https://jira.alza.cz
+JIRA_USERNAME=<jmeno.prijmeni@alza.cz>
+JIRA_PERSONAL_TOKEN=<token z jira → profil → Personal Access Tokens>
+JIRA_SSL_VERIFY=false
+```
+
+Do `.claude/settings.local.json` přidat `"mcp__jira__*"` do `allow` a `"mcp-atlassian"` do `enabledMcpjsonServers`.
+
+### Proměnné prostředí — `.env` (nezavazovat do gitu)
+
 ```
 FIGMA_API_KEY=<token z figma.com/settings → Personal access tokens>
+
+JIRA_URL=https://jira.alza.cz
+JIRA_USERNAME=<email>
+JIRA_PERSONAL_TOKEN=<token>
+JIRA_SSL_VERIFY=false
+JIRA_PROJECTS_FILTER=DSC
 
 GITHUB_REPO=<owner/repo>
 PROJECT_NAME=<název projektu>
 MAX_WORKERS=1
 PORT=5001
+
+# Provider abstrakce (US-188): aktivní úložiště issues
+TARGET_SYSTEM=github  # nebo `jira`
+
+# JIRA status mapping — interní status → JIRA name
+JIRA_STATUS_DRAFT=To Do
+JIRA_STATUS_CONFLICT_CHECK=To Do
+JIRA_STATUS_READY_FOR_ARCH=To Do
+JIRA_STATUS_VALIDATED=Selected for Development
+JIRA_STATUS_IN_DEVELOPMENT=In Progress
+JIRA_STATUS_READY_FOR_REVIEW=In Review
+JIRA_STATUS_READY_FOR_TESTING=Testing
+JIRA_STATUS_DONE=Done
+JIRA_STATUS_BLOCKED=Blocked
+JIRA_STATUS_CANCELLED=Cancelled
 ```
 
 ## Autonomní provádění

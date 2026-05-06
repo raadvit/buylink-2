@@ -1,6 +1,6 @@
 # Integrations
 
-Externí systémy a CLI nástroje, se kterými BuyLink komunikuje.
+Externí systémy a CLI nástroje, se kterými projekt komunikuje. Plánované integrace viz `V1-static-context/project.md`.
 
 ## Pravidla pro tento soubor
 
@@ -9,10 +9,4 @@ Externí systémy a CLI nástroje, se kterými BuyLink komunikuje.
 
 ---
 
-> Žádné integrace zatím nejsou zdokumentovány. Architekt přidá sekce při průchodu prvními stories týkajícími se Adyen, AlzaBox API, notifikací atd.
->
-> Plánované integrace (dle project.md):
-> - Adyen for Platforms (platební brána, escrow)
-> - AlzaBox API (rezervace boxu, potvrzení vložení)
-> - Notifikační služba (email / SMS — TBD)
-> - GitHub CLI + Claude Code CLI (AI pipeline)
+> Žádné integrace zatím nejsou zdokumentovány. Architekt přidá sekce při průchodu prvními stories.
