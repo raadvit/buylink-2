@@ -92,6 +92,17 @@ Human Reviewer
       ▼ PASS
       │  merge do main (squash)
       │  status → done
+      ▼
+# pull nového kódu (před dokumentaristou)
+git -C buy-link/buylinkApi pull  # nebo buylinkFe dle scope
+      ▼
+Dokumentarista  (trigger: /sync-docs US-NNN)
+      │  čte: skutečný kód + V2 sekce dle writes
+      │  aktualizuje V2 dle reality (ne plánu)
+      │  poznámka do Jiry při odchylkách
+      │  commit [US-NNN] docs: sync V2 po implementaci
+      ▼
+   ✓ V2 odpovídá skutečnosti, příští story má přesný kontext
 ```
 
 ### Full-stack story (BE + FE změny)
@@ -133,6 +144,14 @@ Human Reviewer
       ├── FAIL ──→ Developer (BE nebo FE)
       ▼ PASS
       │  merge → status done
+      ▼
+# pull nového kódu
+git -C buy-link/buylinkApi pull && git -C buy-link/buylinkFe pull
+      ▼
+Dokumentarista  (trigger: /sync-docs US-NNN)
+      │  aktualizuje V2 dle reality
+      ▼
+   ✓ V2 synchronizováno
 ```
 
 ### FE-only story (nová stránka proti existujícím endpointům)
@@ -197,7 +216,7 @@ Tito agenti **nejsou** v této verzi memory systému definovaní. Aktivace přij
 | UX Designer | manuální při FE story | konzistentní design napříč stories |
 | QA Inženýr | manuální při komplexní implementaci | strukturované testování AC, automatizace |
 | Security Auditor | manuální při změně auth / endpointů | nezávislý security review |
-| Dokumentarista | manuální při změně API kontraktu | aktualizace V2 po implementaci, V3 changelog |
+| Dokumentarista | `/sync-docs US-NNN` po mergi story | aktualizace V2 po implementaci — sync kódu s memory systémem |
 | Ops Monitor | scheduler po deployi | sledování anomálií v produkci |
 
 Před aktivací každého: data, která ukazují, že **opravdu** chybí.

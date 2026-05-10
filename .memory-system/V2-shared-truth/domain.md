@@ -70,6 +70,8 @@ Task AddAsync(Listing entity, CancellationToken ct = default);
 Task AddAndSaveChangesAsync(Listing entity, CancellationToken ct = default);
 ```
 
+Existuje generický `IRepository<T> where T : BaseEntity` — `GetAllAsync` a `GetByIdAsync` jsou generické, `AddAsync`/`AddAndSaveChangesAsync` jsou hardcoded na `Listing` (technický dluh, ADR při první command story).
+
 ### Status
 
 Stávající implementace: GetAll + GetById (read-only). Create/Update/Deactivate TBD.

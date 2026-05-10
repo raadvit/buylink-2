@@ -103,6 +103,37 @@ return result.Match<IActionResult>(
 
 `ErrorCode` enum: `None, NotFound, Validation, Conflict, Forbidden, Unexpected`
 
+**Error records:**
+```csharp
+// NotFoundError — statická factory pro specifické entity
+NotFoundError.ForEntity("Listing", id)
+// → "Entity 'Listing' with identifier (guid) was not found."
+new NotFoundError("The requested record was not found.")  // vlastní zpráva
+
+// ValidationError(IDictionary<string, string[]>) — field-level chyby
+// ForbiddenError() — generické odepření přístupu
+```
+
+**Error response format:** Controllers vrací `NotFound(error.Message)` — plain string, ne ProblemDetails.
+
+### Testování discriminated union (OneOf)
+
+```csharp
+// V unit testech:
+var result = await handler.Handle(query, ct);
+Assert.True(result.IsT0);              // úspěch
+var dto = result.AsT0;                 // rozbal hodnotu
+Assert.True(result.IsT1);              // chyba
+var error = result.AsT1;              // rozbal error
+```
+
+**Test fixture:**
+```csharp
+// WebServiceFixture : WebApplicationFactory<Program> ("Test" environment → InMemory DB + seeding)
+// Tests/Controllers/*.cs — integrace přes HttpClient
+// Tests/Handlers/*.cs — unit testy s NSubstitute mock repository
+```
+
 ### FluentValidation
 
 ```csharp
@@ -162,14 +193,23 @@ public class ListingsController(IMediator mediator) : ControllerBase
 
 ### Health checks
 
-- `GET /api/healthz` — liveness (bez auth)
-- `GET /api/readiness` — readiness (bez auth)
+- `GET /api/healthz` — liveness (bez auth), tag "live"
+- `GET /api/readiness` — readiness (bez auth), tag "ready"
+- `GET /api/metrics` — Prometheus scraping (OpenTelemetry)
+- Defaultní port: **8980** (`urls: http://*:8980` v appsettings.json)
+- APP_NAME: `"buylinkapi"` (pro OpenTelemetry service name)
+
+### Composer pattern
+
+`IListingComposer` / `ListingComposer` v `BuyLink.Api/Composers/` — konverze DTO → Response model.
+Aktuálně zaregistrovaný ale v controllerech nepoužívaný (vrací se DTO přímo). Při přidání nového endpointu s response modelem použij composer.
 
 ### Testování (Backend)
 
 - **Framework:** xUnit + NSubstitute + `Microsoft.AspNetCore.Mvc.Testing`
-- **Povinné pro každý endpoint:** happy path + validační chyba + NotFound
-- **InMemory DB** pro integrační testy
+- **Fixture:** `WebServiceFixture : WebApplicationFactory<Program>` s "Test" environment → InMemory DB + seeding
+- **Povinné pro každý endpoint:** happy path + validační chyba + NotFound case
+- **InMemory DB** pro integrační testy, seedovaná přes `DbSeeder` (Bogus, 20 záznamů)
 - Testovací projekt: `tests/BuyLink.Api.Tests/`
 
 ### Observability
@@ -215,14 +255,33 @@ export default async function ListingsPage() {
 }
 ```
 
-### Linting
+### Linting & code style
 
 ```bash
 yarn lint        # ESLint check
 yarn lint:fix    # ESLint autofix
 ```
 
-Pre-commit hook spouští lint automaticky.
+Pre-commit hook (Husky + lint-staged) spouští lint automaticky.
+
+**Prettier** (`.prettierrc`): `trailingComma: es5`, `singleQuote: true`, `tabWidth: 2`, `arrowParens: avoid`, `endOfLine: lf`
+
+**ESLint plugins:** `perfectionist` (import pořadí — `sort-imports: error`), `better-tailwindcss` (validace Tailwind tříd)
+
+### Health check route vzor (Next.js)
+
+```typescript
+// app/api/healthz/route.ts
+import { NextResponse } from 'next/server';
+export async function GET() {
+  return NextResponse.json({ status: 'ok', time: new Date().toISOString() });
+}
+export const dynamic = 'force-dynamic'; // vždy fresh, ne staticky generovaný
+```
+
+### Private registry (@alza)
+
+Yarn je nakonfigurovaný pro privátní Alza.FE package registry (Azure Artifacts). Pokud story vyžaduje `@alza/*` package, je třeba token — viz `.yarnrc.yml`. Aktuálně žádné `@alza` packages nejsou použity.
 
 ### Build & deploy
 
