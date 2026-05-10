@@ -14,6 +14,7 @@ při inicializaci provideru. Project prefix čte `JIRA_PROJECTS_FILTER` (default
 from __future__ import annotations
 
 import json as _json
+import mimetypes
 import os
 import pathlib
 import re
@@ -22,6 +23,7 @@ import sys
 import urllib.error
 import urllib.parse
 import urllib.request
+import uuid as _uuid
 from typing import Any
 
 from . import _wiki
@@ -175,6 +177,49 @@ class JiraProvider:
         except urllib.error.URLError as e:
             raise RuntimeError(f"JIRA spojení selhalo {path}: {e.reason}")
 
+    # ── attachment upload ──────────────────────────────────────────────────
+
+    def _upload_attachment(self, jira_key: str, filename: str, data: bytes) -> None:
+        """Nahraje soubor jako přílohu Jira ticketu přes multipart/form-data."""
+        boundary = _uuid.uuid4().hex
+        ctype = mimetypes.guess_type(filename)[0] or "application/octet-stream"
+        body = (
+            f"--{boundary}\r\n"
+            f'Content-Disposition: form-data; name="file"; filename="{filename}"\r\n'
+            f"Content-Type: {ctype}\r\n"
+            "\r\n"
+        ).encode("utf-8") + data + f"\r\n--{boundary}--\r\n".encode("utf-8")
+
+        url = f"{self.base_url}/rest/api/2/issue/{jira_key}/attachments"
+        headers = {
+            "Authorization": f"Bearer {self.token}",
+            "X-Atlassian-Token": "no-check",
+            "Content-Type": f"multipart/form-data; boundary={boundary}",
+        }
+        req = urllib.request.Request(url=url, data=body, method="POST", headers=headers)
+
+        ctx: ssl.SSLContext | None = None
+        if not self.ssl_verify and url.lower().startswith("https"):
+            ctx = ssl.create_default_context()
+            ctx.check_hostname = False
+            ctx.verify_mode = ssl.CERT_NONE
+
+        try:
+            with urllib.request.urlopen(req, timeout=_TIMEOUT, context=ctx) as resp:
+                resp.read()
+        except urllib.error.HTTPError as e:
+            try:
+                detail = e.read().decode("utf-8", errors="replace")
+            except Exception:
+                detail = ""
+            raise RuntimeError(f"JIRA attachment upload HTTP {e.code} ({filename}): {detail or e.reason}")
+        except urllib.error.URLError as e:
+            raise RuntimeError(f"JIRA attachment upload selhalo ({filename}): {e.reason}")
+
+    def upload_attachment_bytes(self, issue_number: int, filename: str, data: bytes) -> None:
+        """Nahraje bytes jako přílohu Jira ticketu."""
+        self._upload_attachment(self.jira_key(issue_number), filename, data)
+
     # ── shape mapper ───────────────────────────────────────────────────────
 
     def _to_issue_shape(self, j_issue: dict) -> dict:
@@ -250,14 +295,12 @@ class JiraProvider:
         updated_body = self._inject_jira_metadata(body, jira_key)
         wiki_path.write_text(updated_body, encoding="utf-8")
 
-        # Přílohy (pouze lokálně — JIRA attachments jsou out-of-scope).
         if files:
             assets_dir, md_prefix = _wiki.assets_info(root, story_id, epic)
             saved = _wiki.save_files_to_assets(files, assets_dir)
             if saved:
                 final_body = updated_body + _wiki.attachments_section(saved, md_prefix)
                 wiki_path.write_text(final_body, encoding="utf-8")
-                # Sync zpět do JIRA description.
                 try:
                     self._request(
                         "PUT", f"/rest/api/2/issue/{jira_key}",
@@ -265,6 +308,11 @@ class JiraProvider:
                     )
                 except Exception as e:
                     print(f"[jira] Varování: update description selhal: {e}", file=sys.stderr)
+                for fname in saved:
+                    try:
+                        self._upload_attachment(jira_key, fname, (assets_dir / fname).read_bytes())
+                    except Exception as e:
+                        print(f"[jira] Varování: příloha {fname} nebyla nahrána: {e}", file=sys.stderr)
 
         relative_wiki_path = str(wiki_path.relative_to(root))
         _wiki.git_commit_wiki(relative_wiki_path, root, f"[{story_id}] wiki: vytvoření story")
@@ -305,6 +353,7 @@ class JiraProvider:
 
         final_body = body + existing_attachments
 
+        assets_dir: pathlib.Path | None = None
         if files:
             assets_dir, md_prefix = _wiki.assets_info(root, story_id, epic)
             saved = _wiki.save_files_to_assets(files, assets_dir)
@@ -317,6 +366,11 @@ class JiraProvider:
                     final_body = body + existing_attachments.rstrip() + "\n" + new_links
                 else:
                     final_body = body + new_section
+                for fname in saved:
+                    try:
+                        self._upload_attachment(jira_key, fname, (assets_dir / fname).read_bytes())
+                    except Exception as e:
+                        print(f"[jira] Varování: příloha {fname} nebyla nahrána: {e}", file=sys.stderr)
 
         full_path.write_text(final_body, encoding="utf-8")
 
@@ -345,12 +399,10 @@ class JiraProvider:
         files,
         epic: str = "",
     ) -> None:
-        # JIRA attachments jsou out-of-scope (multipart upload na /rest/api/2/issue/{key}/attachments
-        # vyžaduje X-Atlassian-Token header a multipart/form-data — necháme na pozdější story).
-        # Lokálně přílohy uložíme do assets a commitneme, abychom zachovali wiki invariant.
         root = pathlib.Path(repo_root)
         full_path = root / wiki_path
         story_id = pathlib.Path(wiki_path).stem
+        jira_key = self.jira_key(issue_number)
 
         if not full_path.exists():
             raise RuntimeError(f"Wiki soubor nenalezen: {wiki_path}")
@@ -372,15 +424,19 @@ class JiraProvider:
 
         full_path.write_text(final_content, encoding="utf-8")
 
-        # Sync description do JIRA (best-effort).
         try:
-            jira_key = self.jira_key(issue_number)
             self._request(
                 "PUT", f"/rest/api/2/issue/{jira_key}",
                 body={"fields": {"description": final_content}},
             )
         except Exception as e:
             print(f"[jira] Varování: nepodařilo se aktualizovat description: {e}", file=sys.stderr)
+
+        for fname in saved:
+            try:
+                self._upload_attachment(jira_key, fname, (assets_dir / fname).read_bytes())
+            except Exception as e:
+                print(f"[jira] Varování: příloha {fname} nebyla nahrána: {e}", file=sys.stderr)
 
     def list_issues(self, state: str) -> list[dict]:
         if state not in ("open", "closed", "all"):

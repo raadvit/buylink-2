@@ -18,7 +18,7 @@ from issue_provider.github import GitHubProvider
 from issue_provider.jira import JiraProvider
 
 
-_TASK_FORGE_PATH = Path(__file__).resolve().parent / "task-forge.py"
+_TASK_FORGE_PATH = Path(__file__).resolve().parent / "main.py"
 
 
 def _load_task_forge():
@@ -576,6 +576,98 @@ class TestSubmitBugErrorCode(unittest.TestCase):
                 content_type="multipart/form-data",
             )
         self.assertEqual(resp.status_code, 502)
+
+
+class TestJiraAttachmentUpload(unittest.TestCase):
+    def setUp(self):
+        self._saved = {k: os.environ.get(k) for k in (
+            "JIRA_URL", "JIRA_PERSONAL_TOKEN", "JIRA_PROJECTS_FILTER", "JIRA_SSL_VERIFY",
+        )}
+        os.environ["JIRA_URL"] = "https://jira.example.com"
+        os.environ["JIRA_PERSONAL_TOKEN"] = "tok"
+        os.environ["JIRA_PROJECTS_FILTER"] = "DSC"
+        os.environ["JIRA_SSL_VERIFY"] = "false"
+
+    def tearDown(self):
+        for k, v in self._saved.items():
+            if v is None:
+                os.environ.pop(k, None)
+            else:
+                os.environ[k] = v
+
+    def test_upload_attachment_bytes_posts_to_attachments_endpoint(self):
+        provider = JiraProvider()
+        captured: dict = {}
+
+        def _capture(req, *_args, **_kwargs):
+            captured["url"] = req.full_url
+            captured["method"] = req.method
+            captured["ct"] = req.get_header("Content-type")
+            captured["xat"] = req.get_header("X-atlassian-token")
+            captured["data"] = req.data
+            return _mock_urlopen_response(b"[]")
+
+        with patch("issue_provider.jira.urllib.request.urlopen", side_effect=_capture):
+            provider.upload_attachment_bytes(7, "image.png", b"\x89PNG\r\n")
+
+        self.assertEqual(captured["url"], "https://jira.example.com/rest/api/2/issue/DSC-7/attachments")
+        self.assertEqual(captured["method"], "POST")
+        self.assertEqual(captured["xat"], "no-check")
+        self.assertIn("multipart/form-data", captured["ct"])
+        self.assertIn(b"image.png", captured["data"])
+        self.assertIn(b"\x89PNG\r\n", captured["data"])
+
+    def test_upload_attachment_bytes_raises_on_http_error(self):
+        import urllib.error
+        provider = JiraProvider()
+
+        def _fail(req, *_args, **_kwargs):
+            raise urllib.error.HTTPError(req.full_url, 403, "Forbidden", {}, None)
+
+        with patch("issue_provider.jira.urllib.request.urlopen", side_effect=_fail):
+            with self.assertRaises(RuntimeError) as ctx:
+                provider.upload_attachment_bytes(1, "x.png", b"data")
+        self.assertIn("403", str(ctx.exception))
+
+    def test_attach_files_to_story_uploads_to_jira(self):
+        """attach_files_to_story nahraje soubory lokálně A odešle je na Jira attachments endpoint."""
+        provider = JiraProvider()
+        upload_calls: list[str] = []
+
+        class FakeFile:
+            filename = "test.png"
+            def save(self, path):
+                import pathlib
+                pathlib.Path(path).write_bytes(b"PNG_DATA")
+
+        def _urlopen(req, *_args, **_kwargs):
+            if req.full_url.endswith("/attachments"):
+                upload_calls.append(req.full_url)
+            return _mock_urlopen_response({})
+
+        with tempfile.TemporaryDirectory() as tmp:
+            wiki_dir = Path(tmp) / "wiki" / "stories"
+            wiki_dir.mkdir(parents=True)
+            wiki_file = wiki_dir / "US-007.md"
+            wiki_file.write_text("h1. Test\n - Status: new\n", encoding="utf-8")
+
+            with patch("issue_provider.jira.urllib.request.urlopen", side_effect=_urlopen), \
+                 patch("issue_provider.jira._wiki.git_commit_wiki"):
+                provider.attach_files_to_story(
+                    issue_number=7,
+                    wiki_path="wiki/stories/US-007.md",
+                    repo_root=tmp,
+                    files=[FakeFile()],
+                )
+
+        self.assertEqual(len(upload_calls), 1)
+        self.assertIn("DSC-7/attachments", upload_calls[0])
+
+    def test_github_upload_attachment_bytes_is_noop(self):
+        """GitHubProvider.upload_attachment_bytes nesmí vyvolat výjimku."""
+        from issue_provider.github import GitHubProvider
+        provider = GitHubProvider()
+        provider.upload_attachment_bytes(1, "x.png", b"data")  # no exception
 
 
 if __name__ == "__main__":

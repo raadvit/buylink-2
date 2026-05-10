@@ -1133,8 +1133,11 @@ _FIGMA_CDN_PREFIXES = (
 _figma_image_cache: dict[str, bytes] = {}
 
 
-def _save_figma_image_from_cdn(cdn_url: str, wiki_path: str, epic: str) -> str | None:
-    """Uloží Figma obrázek do assets. Použije cache, pokud je dostupná; jinak stáhne z CDN."""
+def _save_figma_image_from_cdn(
+    cdn_url: str, wiki_path: str, epic: str, issue_number: int | None = None
+) -> str | None:
+    """Uloží Figma obrázek do assets. Pokud je nastaven TARGET_SYSTEM=jira a issue_number,
+    nahraje obrázek také jako přílohu Jira ticketu."""
     import urllib.request as _ur
     cached = _figma_image_cache.get(cdn_url)
     if not cached:
@@ -1152,6 +1155,11 @@ def _save_figma_image_from_cdn(cdn_url: str, wiki_path: str, epic: str) -> str |
         filename = f"figma_{story_id}.png"
         dest = assets_dir / filename
         dest.write_bytes(cached)
+        if issue_number is not None:
+            try:
+                get_provider().upload_attachment_bytes(issue_number, filename, cached)
+            except Exception as e:
+                app.logger.warning("Nepodařilo se nahrát figma obrázek jako přílohu: %s", e)
         return f"{md_prefix}/{filename}"
     except Exception:
         return None
@@ -1282,7 +1290,7 @@ def save():
 
     figma_cdn = str(data.get("figma_image_cdn_url", "")).strip()
     if figma_cdn:
-        saved_path = _save_figma_image_from_cdn(figma_cdn, wiki_path, epic)
+        saved_path = _save_figma_image_from_cdn(figma_cdn, wiki_path, epic, issue_number)
         if saved_path:
             _insert_figma_image_path(wiki_path, issue_number, saved_path)
 
@@ -1332,7 +1340,7 @@ def update():
 
     figma_cdn = str(data.get("figma_image_cdn_url", "")).strip()
     if figma_cdn and not data.get("figma_image_path"):
-        saved_path = _save_figma_image_from_cdn(figma_cdn, wiki_path, epic)
+        saved_path = _save_figma_image_from_cdn(figma_cdn, wiki_path, epic, issue_number)
         if saved_path:
             data["figma_image_path"] = saved_path
 

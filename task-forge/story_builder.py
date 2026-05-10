@@ -77,6 +77,14 @@ _MEMORY_SYSTEM_DIR = _REPO_ROOT / os.environ.get("MEMORY_SYSTEM_DIR", ".memory-s
 _V1_CONTEXT = _MEMORY_SYSTEM_DIR / "V1-static-context/project.md"
 _V1_CONSTRAINTS = _MEMORY_SYSTEM_DIR / "V1-static-context/constraints.md"
 _V1_STORY_TEMPLATE = _MEMORY_SYSTEM_DIR / "templates/story-template.md"
+_V1_STORY_TEMPLATE_JIRA = _MEMORY_SYSTEM_DIR / "templates/story-template-jira.md"
+
+
+def _story_template_path() -> pathlib.Path:
+    target = os.environ.get("TARGET_SYSTEM", "github").strip().lower() or "github"
+    return _V1_STORY_TEMPLATE_JIRA if target == "jira" else _V1_STORY_TEMPLATE
+
+
 _V2_DOMAIN = _MEMORY_SYSTEM_DIR / "V2-shared-truth/domain.md"
 _V2_REGISTER = _MEMORY_SYSTEM_DIR / "V2-shared-truth/story_register.md"
 _AGENTS_DIR = _MEMORY_SYSTEM_DIR / "team"

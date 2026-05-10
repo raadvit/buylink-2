@@ -241,6 +241,9 @@ class GitHubProvider:
                 file=sys.stderr,
             )
 
+    def upload_attachment_bytes(self, issue_number: int, filename: str, data: bytes) -> None:
+        pass  # GitHub ukládá přílohy přes git commit v assets/; přímý upload není potřeba.
+
     # ── read / status (společný kontrakt s JIRA) ────────────────────────────
 
     def list_issues(self, state: str) -> list[dict]:
