@@ -13,12 +13,64 @@ Entity, jejich atributy, stavy a operace projektu. Identitu projektu drží `V1-
 
 | Konvence | Hodnota |
 |---|---|
-| ID typ | UUID nebo int (dle entity) |
-| Timestamp | ISO 8601, UTC |
-| Soft delete | TBD (Architekt rozhodne při první relevantní story) |
-| Enum case | kebab-case (status values) |
+| ID typ | `Guid` (UUID v4, generovaný na BE) |
+| Timestamp | `DateTime` UTC, ISO 8601 v API odpovědích |
+| Soft delete | Není (hard delete nebo `IsActive` flag dle entity) |
+| Enum case | PascalCase v C#, snake_case v API JSON |
+| BaseEntity | `Guid Id`, `DateTime CreatedAt`, `DateTime UpdatedAt` — dědí všechny entity |
+| DB migrations | Flyway (repo `dbBuylink`) — EF nespravuje schéma |
 | Wiki path | `wiki/stories/US-{id:03d}.md` |
 
 ---
 
-> Žádné entity zatím nejsou definovány. Architekt je přidá při průchodu prvními stories.
+<!-- SECTION: listing -->
+## Listing
+
+Základní entita platformy. Reprezentuje inzerát vytvořený prodejcem.
+
+### Atributy
+
+| Atribut | Typ | Nullable | Popis |
+|---|---|---|---|
+| Id | Guid | ne | PK, generovaný na BE |
+| Title | string | ne | Název inzerátu |
+| Description | string | ne | Popis inzerátu |
+| Price | decimal | ne | Cena (měna TBD) |
+| IsActive | bool | ne | Viditelnost inzerátu; default `true` |
+| CreatedAt | DateTime UTC | ne | Čas vytvoření (z BaseEntity) |
+| UpdatedAt | DateTime UTC | ne | Čas poslední změny (z BaseEntity) |
+
+### DB tabulka
+
+`Listings` — konfigurováno přes `ListingConfiguration : IEntityTypeConfiguration<Listing>`
+
+### Operace
+
+| Operace | Popis |
+|---|---|
+| GetAll | Vrátí seznam všech inzerátů |
+| GetById | Vrátí inzerát dle Guid ID |
+| Create | Vytvoří nový inzerát (TBD) |
+| Update | Aktualizuje existující inzerát (TBD) |
+| Deactivate | Nastaví `IsActive = false` (TBD) |
+
+### Invarianty
+
+- `Title` a `Description` nesmějí být prázdné
+- `Price` musí být > 0
+- `IsActive` default `true` při vytvoření
+
+### Repository interface
+
+```csharp
+// BuyLink.Domain/Listings/IListingRepository.cs
+Task<IReadOnlyList<Listing>> GetAllAsync(CancellationToken ct = default);
+Task<Listing?> GetByIdAsync(Guid id, CancellationToken ct = default);
+Task AddAsync(Listing entity, CancellationToken ct = default);
+Task AddAndSaveChangesAsync(Listing entity, CancellationToken ct = default);
+```
+
+### Status
+
+Stávající implementace: GetAll + GetById (read-only). Create/Update/Deactivate TBD.
+<!-- /SECTION: listing -->
