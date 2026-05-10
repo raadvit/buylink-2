@@ -16,7 +16,7 @@ from . import _wiki
 
 
 def _github_repo() -> str:
-    return os.environ.get("GITHUB_REPO", "raadvit/PreciousMetals_backend")
+    return os.environ.get("GITHUB_REPO", "")
 
 
 class GitHubProvider:

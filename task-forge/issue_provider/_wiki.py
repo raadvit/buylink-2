@@ -1,5 +1,6 @@
 """Sdílené wiki/git helpery napříč providery (provider-agnostic)."""
 
+import os
 import pathlib
 import re
 import subprocess
@@ -49,14 +50,21 @@ def delete_if_done(wiki_path: pathlib.Path, root: pathlib.Path, body: str) -> No
 
 
 def is_task_forge_epic(epic: str) -> bool:
-    return epic.strip().lower().replace("-", " ") == "task forge"
+    tool_name = os.environ.get("TOOL_EPIC_NAME", "Task Forge")
+    if not tool_name:
+        return False
+    return epic.strip().lower().replace("-", " ") == tool_name.strip().lower().replace("-", " ")
 
 
 def assets_info(root: pathlib.Path, story_id: str, epic: str) -> tuple[pathlib.Path, str]:
     """Returns (assets_dir, md_link_prefix) based on epic."""
+    wiki_root = os.environ.get("WIKI_DIR", "wiki")
+    wiki_dir = f"{wiki_root}/stories"
     if is_task_forge_epic(epic or ""):
-        return root / "wiki" / "stories-task-forge" / story_id, f"../stories-task-forge/{story_id}"
-    return root / "wiki" / "stories" / "assets" / story_id, f"assets/{story_id}"
+        tool_dir = f"{wiki_root}/stories-task-forge"
+        rel = os.path.relpath(tool_dir, wiki_dir).replace("\\", "/")
+        return root / tool_dir / story_id, f"{rel}/{story_id}"
+    return root / wiki_dir / "assets" / story_id, f"assets/{story_id}"
 
 
 def save_files_to_assets(files, assets_dir: pathlib.Path) -> list:
