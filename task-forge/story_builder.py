@@ -11,13 +11,24 @@ import urllib.request
 import uuid
 from datetime import date, datetime
 
-import certifi
-
 import store_state
 from issue_provider import get_provider
 
-_REPO_ROOT = pathlib.Path(__file__).resolve().parents[1]
-_TOKEN_STRATEGY = _REPO_ROOT / "agents" / "token_strategy.md"
+
+def _ssl_context() -> ssl.SSLContext:
+    """SSL kontext s CA bundle z `certifi` (fallback na systémový store).
+
+    Workaround pro macOS Python instalace bez nakonfigurovaného OpenSSL CA store
+    (typická chyba: `CERTIFICATE_VERIFY_FAILED: unable to get local issuer certificate`).
+    """
+    try:
+        import certifi  # noqa: PLC0415
+        return ssl.create_default_context(cafile=certifi.where())
+    except ImportError:
+        return ssl.create_default_context()
+
+_REPO_ROOT = pathlib.Path(os.environ.get("REPO_ROOT", str(pathlib.Path(__file__).resolve().parents[1])))
+_TOKEN_STRATEGY = _REPO_ROOT / os.environ.get("MEMORY_TOKEN_STRATEGY", ".memory-system/docs/token-strategy.md")
 
 
 def _append_status_history(wiki_path: pathlib.Path, status: str) -> None:
@@ -44,7 +55,7 @@ def _append_status_history(wiki_path: pathlib.Path, status: str) -> None:
 
 
 def _load_github_repo() -> str:
-    return os.environ.get("GITHUB_REPO", "raadvit/PreciousMetals_backend")
+    return os.environ.get("GITHUB_REPO", "")
 
 
 _GITHUB_REPO = _load_github_repo()
@@ -62,13 +73,14 @@ def _model_for_agent(agent_name: str) -> str:
         pass
     return "claude-haiku-4-5-20251001"
 
-_V1_CONTEXT = _REPO_ROOT / ".memory-system" / "V1 - static context" / "context.md"
-_V1_CONSTRAINTS = _REPO_ROOT / ".memory-system" / "V1 - static context" / "constraints.md"
-_V1_STORY_TEMPLATE = _REPO_ROOT / ".memory-system" / "V1 - static context" / "story_template.md"
-_V2_DOMAIN = _REPO_ROOT / ".memory-system" / "V2 - Shared Truth" / "domain_model.md"
-_V2_REGISTER = _REPO_ROOT / ".memory-system" / "V2 - Shared Truth" / "story_register.md"
-_AGENTS_DIR = _REPO_ROOT / ".memory-system" / "team"
-_CONFIG = _REPO_ROOT / ".claude" / "config.md"
+_MEMORY_SYSTEM_DIR = _REPO_ROOT / os.environ.get("MEMORY_SYSTEM_DIR", ".memory-system")
+_V1_CONTEXT = _MEMORY_SYSTEM_DIR / "V1-static-context/project.md"
+_V1_CONSTRAINTS = _MEMORY_SYSTEM_DIR / "V1-static-context/constraints.md"
+_V1_STORY_TEMPLATE = _MEMORY_SYSTEM_DIR / "templates/story-template.md"
+_V2_DOMAIN = _MEMORY_SYSTEM_DIR / "V2-shared-truth/domain.md"
+_V2_REGISTER = _MEMORY_SYSTEM_DIR / "V2-shared-truth/story_register.md"
+_AGENTS_DIR = _MEMORY_SYSTEM_DIR / "team"
+_CONFIG = _REPO_ROOT / os.environ.get("CONFIG_FILE", ".claude/config.md")
 
 _impl_plan_in_analysis: bool | None = None
 
@@ -883,7 +895,7 @@ def launch_analyze_agent(session_id: str, issue_number: int, store) -> None:
     cmd = [claude_bin, "-p", f"/analyze {issue_number}", "--output-format", "json"]
     env = os.environ.copy()
     env["TF_SESSION_ID"] = session_id
-    env["TF_API_PORT"] = "5001"
+    env["TF_API_PORT"] = os.environ.get("PORT", "5001")
     try:
         result = subprocess.run(cmd, stdin=subprocess.DEVNULL, capture_output=True, text=True,
                                 cwd=str(_REPO_ROOT), env=env)
@@ -932,10 +944,6 @@ def launch_analyze_agent(session_id: str, issue_number: int, store) -> None:
             pass
 
     store.update_session(session_id, status="done", validation_phase="done")
-
-
-def _ssl_context() -> ssl.SSLContext:
-    return ssl.create_default_context(cafile=certifi.where())
 
 
 def _parse_figma_url(url: str) -> tuple[str, str | None]:

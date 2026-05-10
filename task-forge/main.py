@@ -10,7 +10,6 @@ from pathlib import Path
 from flask import Flask, jsonify, request, send_from_directory
 
 _STATIC_DIR = Path(__file__).resolve().parent / "static"
-_REPO_ROOT = Path(__file__).resolve().parents[1]
 
 
 def _find_dotenv() -> Path | None:
@@ -38,9 +37,16 @@ def _load_dotenv() -> None:
                 os.environ[k] = v.strip()
     except Exception:
         pass
+    if "REPO_ROOT" not in os.environ:
+        os.environ["REPO_ROOT"] = str(env_path.parent)
 
 
 _load_dotenv()
+_REPO_ROOT = Path(os.environ.get("REPO_ROOT", str(Path(__file__).resolve().parents[1])))
+_MEMORY_SYSTEM_DIR = _REPO_ROOT / os.environ.get("MEMORY_SYSTEM_DIR", ".memory-system")
+_WIKI_ROOT = os.environ.get("WIKI_DIR", "wiki")
+_WIKI_DIR = f"{_WIKI_ROOT}/stories"
+_WIKI_ARCHIVED_DIR = f"{_WIKI_ROOT}/stories-archived"
 
 import status_history as _status_history
 import store_state
@@ -51,7 +57,7 @@ from issue_provider import _wiki as _wiki_helpers
 from queue_manager import AnalysisQueue, ImplementQueue
 
 
-_GITHUB_REPO = os.environ.get("GITHUB_REPO", "raadvit/PreciousMetals_backend")
+_GITHUB_REPO = os.environ.get("GITHUB_REPO", "")
 _analysis_queue = AnalysisQueue(max_workers=max(1, int(os.environ.get("MAX_WORKERS", "1"))))
 _implement_queue = ImplementQueue(max_workers=1)
 _poller_event = threading.Event()
@@ -78,7 +84,7 @@ def _ensure_queue_labels() -> None:
 
 
 def _enqueue_analysis(issue_number: int, title: str) -> tuple[str, int]:
-    wiki_path = f"wiki/stories/US-{issue_number:03d}.md"
+    wiki_path = f"{_WIKI_DIR}/US-{issue_number:03d}.md"
     full_wiki = _REPO_ROOT / wiki_path
     if not full_wiki.exists():
         raise FileNotFoundError(f"Wiki soubor {wiki_path} neexistuje.")
@@ -122,7 +128,7 @@ def _enqueue_analysis(issue_number: int, title: str) -> tuple[str, int]:
 
 
 def _enqueue_development(issue_number: int) -> tuple[str, int]:
-    wiki_path = f"wiki/stories/US-{issue_number:03d}.md"
+    wiki_path = f"{_WIKI_DIR}/US-{issue_number:03d}.md"
     full_wiki = _REPO_ROOT / wiki_path
     if not full_wiki.exists():
         try:
@@ -290,7 +296,7 @@ def get_issue(issue_number):
     status_match = re.search(r"(?:^- Status:|^status:)\s*([^\n]+)", body, re.MULTILINE)
     updated = issue.get("updatedAt", "")
 
-    wiki_path = _REPO_ROOT / f"wiki/stories/US-{issue_number:03d}.md"
+    wiki_path = _REPO_ROOT / f"{_WIKI_DIR}/US-{issue_number:03d}.md"
     wiki_content = wiki_path.read_text(encoding="utf-8") if wiki_path.exists() else None
 
     gh_status = status_match.group(1).strip() if status_match else ""
@@ -313,7 +319,7 @@ def get_issue(issue_number):
         "date": updated[:10] if updated else "",
         "body": body,
         "wiki": wiki_content,
-        "wiki_path": f"wiki/stories/US-{issue_number:03d}.md",
+        "wiki_path": f"{_WIKI_DIR}/US-{issue_number:03d}.md",
     })
     resp.headers["Cache-Control"] = "no-store"
     return resp, 200
@@ -321,8 +327,8 @@ def get_issue(issue_number):
 
 def _cleanup_memory_for_story(issue_number: int) -> None:
     """Odstraní story z story_register a vyčistí exkluzivní domain sekce."""
-    register_path = _REPO_ROOT / ".memory-system" / "V2-shared-truth" / "story_register.md"
-    domain_path = _REPO_ROOT / ".memory-system" / "V2-shared-truth" / "domain.md"
+    register_path = _MEMORY_SYSTEM_DIR / "V2-shared-truth/story_register.md"
+    domain_path = _MEMORY_SYSTEM_DIR / "V2-shared-truth/domain.md"
     try:
         content = register_path.read_text(encoding="utf-8")
         story_id = f"US-{issue_number:03d}"
@@ -397,9 +403,9 @@ def delete_issue(issue_number):
 
     labels = [l["name"] for l in issue_data.get("labels", [])]
     if "user story" in labels:
-        wiki_path = _REPO_ROOT / f"wiki/stories/US-{issue_number:03d}.md"
+        wiki_path = _REPO_ROOT / f"{_WIKI_DIR}/US-{issue_number:03d}.md"
     elif "bug" in labels:
-        wiki_path = _REPO_ROOT / f"wiki/stories/US-{issue_number:03d}.md"
+        wiki_path = _REPO_ROOT / f"{_WIKI_DIR}/US-{issue_number:03d}.md"
     else:
         return jsonify({"error": "Neznámý typ issue (chybí label 'user story' nebo 'bug')."}), 422
 
@@ -450,12 +456,12 @@ def archive_story(issue_number):
     except Exception as e:
         app.logger.warning("provider.archive_issue #%s selhal: %s", issue_number, e)
 
-    wiki_src = _REPO_ROOT / f"wiki/stories/US-{issue_number:03d}.md"
+    wiki_src = _REPO_ROOT / f"{_WIKI_DIR}/US-{issue_number:03d}.md"
     if not wiki_src.exists():
         return jsonify({"ok": True, "skipped": "no_wiki"}), 200
 
     # 2. git mv + commit
-    archived_dir = _REPO_ROOT / "wiki" / "stories-archived"
+    archived_dir = _REPO_ROOT / _WIKI_ARCHIVED_DIR
     archived_dir.mkdir(parents=True, exist_ok=True)
     gitkeep = archived_dir / ".gitkeep"
     if not gitkeep.exists():
@@ -470,7 +476,7 @@ def archive_story(issue_number):
     if mv.returncode != 0:
         return jsonify({"error": mv.stderr.strip() or "git mv selhal."}), 502
 
-    assets_src = _REPO_ROOT / "wiki" / "stories" / "assets" / f"US-{issue_number:03d}"
+    assets_src = _REPO_ROOT / _WIKI_DIR / "assets" / f"US-{issue_number:03d}"
     if assets_src.exists():
         assets_dst = archived_dir / "assets" / f"US-{issue_number:03d}"
         assets_dst.parent.mkdir(parents=True, exist_ok=True)
@@ -487,7 +493,7 @@ def archive_story(issue_number):
         subprocess.run(["git", "mv", str(wiki_dst), str(wiki_src)], cwd=str(_REPO_ROOT))
         return jsonify({"error": commit.stderr.strip() or "git commit selhal."}), 502
 
-    return jsonify({"ok": True, "archived_path": f"wiki/stories-archived/US-{issue_number:03d}.md"}), 200
+    return jsonify({"ok": True, "archived_path": f"{_WIKI_ARCHIVED_DIR}/US-{issue_number:03d}.md"}), 200
 
 
 @app.get("/preview")
@@ -823,7 +829,7 @@ def clarify():
     if not issue_number or issue_number <= 0:
         return jsonify({"error": "Chybí nebo neplatné issue_number."}), 400
 
-    wiki_path = f"wiki/stories/US-{issue_number:03d}.md"
+    wiki_path = f"{_WIKI_DIR}/US-{issue_number:03d}.md"
     full_wiki = _REPO_ROOT / wiki_path
     if not full_wiki.exists():
         return jsonify({"error": f"Wiki soubor {wiki_path} neexistuje."}), 404
@@ -866,7 +872,7 @@ def clarify_answers():
     if not isinstance(answers, list):
         return jsonify({"error": "Pole answers musí být seznam."}), 400
 
-    full_wiki = _REPO_ROOT / f"wiki/stories/US-{issue_number:03d}.md"
+    full_wiki = _REPO_ROOT / f"{_WIKI_DIR}/US-{issue_number:03d}.md"
     if not full_wiki.exists():
         return jsonify({"error": "Wiki soubor neexistuje."}), 404
 
@@ -997,7 +1003,7 @@ def enqueue():
             lbl_err = "Bug musí být ve stavu new" if is_bug else "Story musí být ve stavu dev-plan nebo validated"
             return jsonify({"error": f"{lbl_err} (aktuální stav: '{story_status}')."}), 400
     else:
-        wiki_path = _REPO_ROOT / f"wiki/stories/US-{issue_number:03d}.md"
+        wiki_path = _REPO_ROOT / f"{_WIKI_DIR}/US-{issue_number:03d}.md"
         if not wiki_path.exists():
             return jsonify({"error": "Wiki soubor neexistuje."}), 404
     try:
@@ -1129,16 +1135,13 @@ _figma_image_cache: dict[str, bytes] = {}
 
 def _save_figma_image_from_cdn(cdn_url: str, wiki_path: str, epic: str) -> str | None:
     """Uloží Figma obrázek do assets. Použije cache, pokud je dostupná; jinak stáhne z CDN."""
-    import ssl as _ssl
     import urllib.request as _ur
-    import certifi as _certifi
     cached = _figma_image_cache.get(cdn_url)
     if not cached:
         if not any(cdn_url.startswith(p) for p in _FIGMA_CDN_PREFIXES):
             return None
         try:
-            ctx = _ssl.create_default_context(cafile=_certifi.where())
-            with _ur.urlopen(cdn_url, timeout=30, context=ctx) as resp:
+            with _ur.urlopen(cdn_url, timeout=30, context=story_builder._ssl_context()) as resp:
                 cached = resp.read()
         except Exception:
             return None
@@ -1305,11 +1308,11 @@ def update():
     except (TypeError, ValueError):
         issue_number = 0
 
-    # Validace wiki_path — musí být v wiki/stories/ (ochrana před path traversal)
+    # Validace wiki_path — musí být v WIKI_DIR (ochrana před path traversal)
     from pathlib import PurePosixPath
     try:
         normalized = str(PurePosixPath(wiki_path))
-        if not normalized.startswith("wiki/stories/") or ".." in normalized:
+        if not normalized.startswith(_WIKI_DIR + "/") or ".." in normalized:
             return jsonify({"error": "Neplatná wiki_path."}), 422
     except Exception:
         return jsonify({"error": "Neplatná wiki_path."}), 422
@@ -1426,7 +1429,7 @@ def get_issues():
             "story_status": story_status,
             "labels": labels,
             "state": issue.get("state", "OPEN").upper(),
-            "wiki_path": f"wiki/stories/US-{issue['number']:03d}.md",
+            "wiki_path": f"{_WIKI_DIR}/US-{issue['number']:03d}.md",
             "cost_usd": cost_usd,
             "duration_str": duration_str,
             "duration_detail": duration_detail,
@@ -1448,7 +1451,7 @@ def attach_files():
     wiki_path = data.get("wiki_path", "")
     if not issue_number or not wiki_path:
         return jsonify({"error": "issue_number and wiki_path required"}), 422
-    if not wiki_path.startswith("wiki/stories/") or ".." in wiki_path:
+    if not wiki_path.startswith(_WIKI_DIR + "/") or ".." in wiki_path:
         return jsonify({"error": "invalid wiki_path"}), 422
     try:
         resolved = (_REPO_ROOT / wiki_path).resolve()
@@ -1567,7 +1570,7 @@ def update_bug_status(issue_number):
             pass
 
     # Bugy jsou uloženy jako wiki/stories/US-NNN.md (stejný formát jako stories)
-    bug_wiki = _REPO_ROOT / f"wiki/stories/US-{issue_number:03d}.md"
+    bug_wiki = _REPO_ROOT / f"{_WIKI_DIR}/US-{issue_number:03d}.md"
     if bug_wiki.exists():
         try:
             wc = bug_wiki.read_text(encoding="utf-8")
@@ -1644,7 +1647,7 @@ def update_story_status(issue_number):
     except Exception as e:
         app.logger.warning("provider.transition_status #%s selhal: %s", issue_number, e)
 
-    wiki_path = _REPO_ROOT / f"wiki/stories/US-{issue_number:03d}.md"
+    wiki_path = _REPO_ROOT / f"{_WIKI_DIR}/US-{issue_number:03d}.md"
     if wiki_path.exists():
         try:
             wiki_content = wiki_path.read_text(encoding="utf-8")
@@ -1666,7 +1669,7 @@ def get_chat():
         issue_number = 0
     if not issue_number or issue_number <= 0:
         return jsonify({"error": "Chybí nebo neplatné issue_number."}), 400
-    wiki_path = f"wiki/stories/US-{issue_number:03d}.md"
+    wiki_path = f"{_WIKI_DIR}/US-{issue_number:03d}.md"
     return jsonify({"messages": wiki_chat.read_chat_messages(wiki_path)}), 200
 
 

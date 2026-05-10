@@ -91,7 +91,7 @@ Výjimka: nevratné destruktivní operace na sdíleném stavu (force push do mai
 
 ## Konfigurace projektu
 
-- Repozitář: `raadvit/PreciousMetals_backend`
+- Repozitář: `raadvit/buylink-2`
 - Hlavní větev: `main`
 - Pracovní větev: `feature/next`
 - Squash merge přes PR, nikdy přímý push do main
