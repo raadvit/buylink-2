@@ -16,7 +16,7 @@ import importlib.util as _ilu
 
 _spec = _ilu.spec_from_file_location(
     "task_forge",
-    Path(__file__).resolve().parent / "task-forge.py",
+    Path(__file__).resolve().parent / "main.py",
 )
 _mod = _ilu.module_from_spec(_spec)
 _spec.loader.exec_module(_mod)
@@ -201,8 +201,8 @@ class TestImplementEndpoint(unittest.TestCase):
 class TestUpdateIssueStatusInDevelopment(unittest.TestCase):
     """Unit testy pro story_builder.update_issue_status_in_development."""
 
-    def test_updates_status_in_wiki_and_calls_gh(self, tmp_path=None):
-        import tempfile, os
+    def test_updates_status_in_wiki_and_calls_provider(self, tmp_path=None):
+        import tempfile
         with tempfile.TemporaryDirectory() as tmp_dir:
             stories_dir = Path(tmp_dir) / "wiki" / "stories"
             stories_dir.mkdir(parents=True)
@@ -212,42 +212,40 @@ class TestUpdateIssueStatusInDevelopment(unittest.TestCase):
                 encoding="utf-8",
             )
             wiki_path = "wiki/stories/US-042.md"
+            mock_provider = MagicMock()
 
-            with patch("subprocess.run") as mock_run:
-                mock_run.return_value = MagicMock(returncode=0, stderr="")
+            with patch.object(story_builder, "get_provider", return_value=mock_provider):
                 story_builder.update_issue_status_in_development(42, wiki_path, tmp_dir)
 
             updated = wiki_file.read_text(encoding="utf-8")
             self.assertIn("- Status: in-development", updated)
             self.assertNotIn("- Status: validated", updated)
-            mock_run.assert_called_once()
-            args = mock_run.call_args[0][0]
-            self.assertIn("gh", args)
-            self.assertIn("issue", args)
-            self.assertIn("edit", args)
+            mock_provider.update_body.assert_called_once_with(42, updated)
 
-    def test_raises_on_gh_failure(self):
+    def test_raises_on_provider_failure(self):
         import tempfile
-        with tempfile.TemporaryDirectory() as tmp_dir:
-            stories_dir = Path(tmp_dir) / "wiki" / "stories"
-            stories_dir.mkdir(parents=True)
-            wiki_file = stories_dir / "US-001.md"
-            wiki_file.write_text("- Status: validated\n", encoding="utf-8")
-
-            with patch("subprocess.run") as mock_run:
-                mock_run.return_value = MagicMock(returncode=1, stderr="Unauthorized")
-                with self.assertRaises(RuntimeError) as ctx:
-                    story_builder.update_issue_status_in_development(1, "wiki/stories/US-001.md", tmp_dir)
-            self.assertIn("selhal", str(ctx.exception))
-
-    def test_raises_on_timeout(self):
-        import tempfile, subprocess
         with tempfile.TemporaryDirectory() as tmp_dir:
             stories_dir = Path(tmp_dir) / "wiki" / "stories"
             stories_dir.mkdir(parents=True)
             (stories_dir / "US-001.md").write_text("- Status: validated\n", encoding="utf-8")
 
-            with patch("subprocess.run", side_effect=subprocess.TimeoutExpired("gh", 30)):
+            mock_provider = MagicMock()
+            mock_provider.update_body.side_effect = RuntimeError("issue edit selhal")
+            with patch.object(story_builder, "get_provider", return_value=mock_provider):
+                with self.assertRaises(RuntimeError) as ctx:
+                    story_builder.update_issue_status_in_development(1, "wiki/stories/US-001.md", tmp_dir)
+            self.assertIn("selhal", str(ctx.exception))
+
+    def test_raises_on_provider_timeout(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            stories_dir = Path(tmp_dir) / "wiki" / "stories"
+            stories_dir.mkdir(parents=True)
+            (stories_dir / "US-001.md").write_text("- Status: validated\n", encoding="utf-8")
+
+            mock_provider = MagicMock()
+            mock_provider.update_body.side_effect = RuntimeError("Timeout při aktualizaci issue body.")
+            with patch.object(story_builder, "get_provider", return_value=mock_provider):
                 with self.assertRaises(RuntimeError) as ctx:
                     story_builder.update_issue_status_in_development(1, "wiki/stories/US-001.md", tmp_dir)
             self.assertIn("timeout", str(ctx.exception).lower())

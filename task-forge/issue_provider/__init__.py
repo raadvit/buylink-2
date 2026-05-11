@@ -52,6 +52,13 @@ class IssueProvider(Protocol):
         epic: str = "",
     ) -> None: ...
 
+    def upload_attachment_bytes(
+        self,
+        issue_number: int,
+        filename: str,
+        data: bytes,
+    ) -> None: ...
+
     def list_issues(self, state: str) -> list[dict]: ...
 
     def get_issue(self, issue_number: int) -> dict: ...

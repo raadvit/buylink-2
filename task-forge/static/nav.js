@@ -13,7 +13,7 @@ if (!document.getElementById('nav-link-resets')) {
   document.head.appendChild(s);
 }
 
-function initNav(activePage) {
+function initNav(activePage, opts) {
   const nav = document.createElement('header');
   nav.className = 'topnav';
   nav.innerHTML = `
@@ -31,6 +31,14 @@ function initNav(activePage) {
             <rect x="2" y="9.5"  width="10" height="1.5" rx="0.5" fill="currentColor"/>
           </svg>
           Seznam stories
+        </a>
+        <a href="/queue" class="nav-link${activePage === 'queue' ? ' is-active' : ''}" aria-current="${activePage === 'queue' ? 'page' : 'false'}">
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+            <rect x="2" y="2.5"  width="6" height="1.5" rx="0.5" fill="currentColor"/>
+            <rect x="2" y="6.25" width="8" height="1.5" rx="0.5" fill="currentColor"/>
+            <rect x="2" y="10"   width="4" height="1.5" rx="0.5" fill="currentColor"/>
+          </svg>
+          Fronta
         </a>
       </nav>
     </div>
@@ -66,26 +74,10 @@ function initNav(activePage) {
 
       <div class="user-menu" tabindex="0" role="button" aria-label="Uživatelské menu">
         <div class="user-menu__avatar">RV</div>
-        <div class="user-menu__meta">
-          <span class="user-menu__name">Radek Vít</span>
-          <span class="user-menu__project"></span>
-        </div>
-        <svg width="10" height="10" viewBox="0 0 10 10" fill="none" aria-hidden="true">
-          <path d="M2 4 L5 7 L8 4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
-        </svg>
       </div>
     </div>
   `;
 
   document.body.insertBefore(nav, document.body.firstChild);
 
-  fetch('/api/config')
-    .then(r => r.ok ? r.json() : null)
-    .then(data => {
-      const el = document.querySelector('.user-menu__project');
-      if (el && data && data.project_name) {
-        el.textContent = data.project_name;
-      }
-    })
-    .catch(() => {});
 }

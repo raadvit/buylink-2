@@ -25,7 +25,7 @@ model: claude-sonnet-4-6
 - Doplněná story v `wiki/stories/us-NNN.md`:
   - sekce `Architecture Notes`
   - sekce `Domain Changes` / `API Changes` / `Integration Changes` (inline výtahy z V2)
-  - sekce `Implementation Plan` s rozdělením BE / FE
+  - sekce `Implementation Plan` s rozdělením FE / BE / DB (viz formát níže)
   - sekce `Manuální QA scénář`
 - Update `V2/domain.md`, `V2/api.md`, `V2/integrations.md` (jen sekce dle `writes`)
 - Volitelně nový ADR v `V1/decisions.md` (append-only)
@@ -67,7 +67,7 @@ model: claude-sonnet-4-6
    - `Domain Changes` — **inline výtah** z domain.md, ne odkaz
    - `API Changes` — **inline výtah** z api.md
    - `Integration Changes` — **inline výtah** z integrations.md (pokud relevantní)
-   - `Implementation Plan` — pořadí kroků **rozdělené na Backend a Frontend**, dotčené soubory, migrace
+   - `Implementation Plan` — kroky **rozdělené na FE / BE / DB** (viz formát níže)
    - **`Manuální QA scénář`** — povinný, bez něj story neprojde do `validated`
 7. **Story self-contained** — Developeři nečtou V2, čtou jen story.
 8. **Status → `validated`**.
@@ -90,11 +90,15 @@ Když přidávám entitu, **vždy doplním Operations a Invariants**, ne jen atr
 
 Každý zápis do V2 dle `templates/`. Validační skript běží po commitech.
 
-### BE / FE rozdělení
+### FE / BE / DB rozdělení
 
-Implementation Plan musí jasně označit, co je BE a co FE. Pokud je story full-stack:
-- BE kroky první (aby FE měl proti čemu pracovat)
-- API kontrakt v `API Changes` musí být dost detailní, aby FE mohl pracovat i bez čekání na BE implementaci (mock data)
+Formát Implementation Plan: viz `memory-system/templates/story-template.md`, sekce `## Implementation Plan`.
+
+Pravidla:
+- Nadpisy `### FE / ### BE / ### DB` (ne `**FE:**` ani `**Frontend:**`)
+- Odrážky `- ` (ne číslované seznamy `1. 2. 3.`)
+- Prázdné sekce FE/BE/DB vynech
+- BE kroky první (FE má API kontrakt, se kterým může pracovat bez čekání)
 
 ### Manuální QA scénář
 
@@ -129,7 +133,7 @@ Pokud bych přesáhl, eskaluji: zužuji `reads`/`writes`, případně doporučuj
 ## Self-check před `status → validated`
 
 - [ ] Story má vyplněné `Architecture Notes`, `Implementation Plan`?
-- [ ] Implementation Plan má rozdělení BE / FE?
+- [ ] Implementation Plan má sekce `### FE / ### BE / ### DB` s `- ` odrážkami (ne `**bold:**` nadpisy, ne číslované seznamy)?
 - [ ] `Domain Changes` / `API Changes` / `Integration Changes` jsou **inline**, ne odkazy?
 - [ ] V2 sekce updatovány dle `writes` story (pokud je třeba)?
 - [ ] Strict format ve V2 dodržen?
@@ -145,4 +149,6 @@ Pokud bych přesáhl, eskaluji: zužuji `reads`/`writes`, případně doporučuj
 - ❌ Editovat existující ADR
 - ❌ Přidat entitu bez Operations a Invariants (anemic model)
 - ❌ Předat Developerovi story bez `Manuální QA scénář`
-- ❌ Nerozdělit Implementation Plan na BE / FE (Developeři pak nevědí, co je čí)
+- ❌ Nerozdělit Implementation Plan na `### FE / ### BE / ### DB` (Developeři pak nevědí, co je čí)
+- ❌ Používat `**Frontend:**` nebo `**Backend:**` místo `### FE / ### BE` (Jira zobrazí rozbitý markup)
+- ❌ Používat číslované seznamy `1. 2. 3.` místo `- ` odrážek (Jira nepřevede správně)

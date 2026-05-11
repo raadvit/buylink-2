@@ -168,8 +168,41 @@ function renderTimeline(container, storyStatus, opts) {
   container.innerHTML = '<div class="story-widget"><div class="story-timeline"><div class="story-track"><div class="story-track-fill" style="width:' + fillPct + '%"></div></div>' + steps + '</div>' + bannerHtml + '</div>';
 }
 
-function renderTimelineInline(container, storyStatus) {
+const _STEP_ACTIONS = {
+  'clarify':        { queueType: 'clarify',    label: 'clarify' },
+  'draft':          { queueType: 'analyze-po', label: 'product owner' },
+  'conflict-check': { queueType: 'analyze-co', label: 'conflict detector' },
+  'dev-plan':       { queueType: 'analyze-ar', label: 'architect' },
+};
+
+const _STEP_METRIC_LABEL = {
+  'clarify':        'Clarify',
+  'draft':          'Product Owner',
+  'conflict-check': 'Conflict Detector',
+  'dev-plan':       'Architect',
+};
+
+function parsePhaseMetrics(wikiContent) {
+  if (!wikiContent) return {};
+  const labelToStep = {
+    'Clarify':            'clarify',
+    'Product Owner':      'draft',
+    'Conflict Detector':  'conflict-check',
+    'Architect':          'dev-plan',
+  };
+  const result = {};
+  const rx = /^- (Clarify|Product Owner|Conflict Detector|Architect): \$([0-9.]+) · čas ([^\n]+)/gm;
+  let m;
+  while ((m = rx.exec(wikiContent)) !== null) {
+    const step = labelToStep[m[1]];
+    if (step) result[step] = { cost: parseFloat(m[2]), duration: m[3].trim() };
+  }
+  return result;
+}
+
+function renderTimelineInline(container, storyStatus, opts) {
   if (!container) return;
+  const phaseMetrics = (opts && opts.phaseMetrics) || {};
   const lastSuccess = _STATUS_TO_STEP[storyStatus] || '';
   const lastIdx = _TIMELINE_STEPS.findIndex(s => s.key === lastSuccess);
   const noNext = _STATUS_NO_NEXT_HIGHLIGHT.has(storyStatus);
@@ -185,7 +218,15 @@ function renderTimelineInline(container, storyStatus) {
     if (!noNext && lastIdx >= 0 && idx === lastIdx + 1) cls = 'is-current';
     if (!noNext && lastIdx < 0 && storyStatus && storyStatus !== 'new' && idx === 0) cls = 'is-current';
     if (blockedIdx >= 0 && idx === blockedIdx) cls = 'is-blocked';
-    parts.push('<div class="tl-step ' + cls + '" data-step="' + step.key + '"><div class="tl-dot" title="' + step.key + '"></div><div class="tl-lbl">' + step.label + '</div></div>');
+    const action = _STEP_ACTIONS[step.key];
+    const actionHtml = action
+      ? '<a class="tl-action" href="#" data-queue-type="' + action.queueType + '">' + action.label + '</a>'
+      : '';
+    const metric = phaseMetrics[step.key];
+    const metricHtml = metric
+      ? '<div class="tl-metric-duration">' + metric.duration + '</div><div class="tl-metric-cost">$' + metric.cost.toFixed(4) + '</div>'
+      : '';
+    parts.push('<div class="tl-step ' + cls + '" data-step="' + step.key + '"><div class="tl-dot" title="' + step.key + '"></div><div class="tl-lbl">' + step.label + '</div>' + actionHtml + metricHtml + '</div>');
   });
 
   container.innerHTML = '<div class="tl">' + parts.join('') + '</div>';

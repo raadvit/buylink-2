@@ -208,6 +208,7 @@
             });
             const j = await r.json();
             if (!r.ok) { addChatMsg('Chyba: ' + (j.error || `HTTP ${r.status}`), 'user'); btnSubmitTeam.disabled = false; return; }
+            if (j.session_id) { _sessionId = j.session_id; localStorage.setItem(_LS_KEY, _sessionId); }
             addChatMsg('Analýza zařazena do fronty…');
             renderTimelineInline(root.querySelector('#story-timeline-container'), 'draft-start');
             _waitForSession();
@@ -244,13 +245,44 @@
       // Vykresli timeline
       const tlContainer = root.querySelector('#story-timeline-container');
       if (tlContainer && typeof renderTimelineInline === 'function') {
-        renderTimelineInline(tlContainer, data.status || '');
+        const _pm = typeof parsePhaseMetrics === 'function' ? parsePhaseMetrics(apiData.wiki || '') : {};
+        renderTimelineInline(tlContainer, data.status || '', { phaseMetrics: _pm });
+      }
+
+      // Kliknutí na akci kroku v timeline → zařadit do fronty
+      if (tlContainer && !tlContainer._actionBound) {
+        tlContainer._actionBound = true;
+        tlContainer.addEventListener('click', async (e) => {
+          const link = e.target.closest('.tl-action');
+          if (!link) return;
+          e.preventDefault();
+          const queueType = link.dataset.queueType;
+          if (!queueType) return;
+          link.style.opacity = '0.4';
+          link.style.pointerEvents = 'none';
+          try {
+            const res = await fetch('/api/queue', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ issue_number: issueNumber, type: queueType }),
+            });
+            if (!res.ok) {
+              const err = await res.json().catch(() => ({}));
+              alert(err.error || `Chyba ${res.status}`);
+            }
+          } catch {
+            alert('Nepodařilo se odeslat požadavek.');
+          } finally {
+            link.style.opacity = '';
+            link.style.pointerEvents = '';
+          }
+        });
       }
 
       // Zobraz blocker důvod v chatu pokud je story blocked
       if (data.status === 'blocked') {
         const wiki = apiData.wiki || apiData.body || '';
-        const conflictsMatch = wiki.match(/##\s+Konflikty\s*\n([\s\S]*?)(?=\n##\s|\n---\s*\n|$)/);
+        const conflictsMatch = wiki.match(/(?:##\s+|h2\. )Konflikty\s*\n([\s\S]*?)(?=\n(?:##\s|h2\.)|---\s*\n|$)/);
         const chat = root.querySelector('#agentChat');
         function addBlockerCard(description, resolution) {
           if (!chat) return;
@@ -309,7 +341,7 @@
       // Zobraz clarify otázky ze sekce ## Clarify ve wiki
       if (data.status === 'clarify' || data.status === 'needs-clarify') {
         const wiki = apiData.wiki || apiData.body || '';
-        const clarifyMatch = wiki.match(/##\s+Clarify\s*\n([\s\S]*?)(?=\n##\s|\n---\s*\n|$)/);
+        const clarifyMatch = wiki.match(/(?:##\s+|h2\. )Clarify\s*\n([\s\S]*?)(?=\n(?:##\s|h2\.)|---\s*\n|$)/);
         if (clarifyMatch) {
           const questions = [];
           clarifyMatch[1].split('\n').forEach(line => {
@@ -336,6 +368,8 @@
           }
         } else if (data.status === 'needs-clarify') {
           addChatMsg('Analýza narazila na nejasnosti. Přidej doplňující informace a spusť analýzu znovu.');
+        } else {
+          addChatMsg('Clarify agent nenašel žádné kritické nejasnosti. Story je připravena k odeslání týmu k validaci.');
         }
       }
 
@@ -399,15 +433,16 @@
     if (!_apiData) return;
     const data = storyDataFromApi(_apiData);
     sessionStorage.setItem('tf-duplicate', JSON.stringify({
-      title: data.title,
-      epic:  data.epic,
-      role:  data.role,
-      why:   data.why,
-      shows: data.shows,
-      behaves: data.behaves,
-      risk:  data.risk,
-      open:  data.open,
-      ac:    data.ac,
+      title:     data.title,
+      epic:      data.epic,
+      role:      data.role,
+      why:       data.why,
+      shows:     data.shows,
+      behaves:   data.behaves,
+      risk:      data.risk,
+      open:      data.open,
+      ac:        data.ac,
+      figma_url: data.figma_url ?? '',
     }));
     window.location = '/create-story-2';
   }
@@ -720,7 +755,8 @@
           if (label) { addChatMsg(label); setStatus(label.replace('…', '')); }
           const tlContainer = root.querySelector('#story-timeline-container');
           if (tlContainer && typeof renderTimelineInline === 'function') {
-            renderTimelineInline(tlContainer, phase);
+            const _pm = typeof parsePhaseMetrics === 'function' ? parsePhaseMetrics((_apiData || {}).wiki || '') : {};
+            renderTimelineInline(tlContainer, phase, { phaseMetrics: _pm });
           }
         }
 

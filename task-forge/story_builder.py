@@ -77,6 +77,14 @@ _MEMORY_SYSTEM_DIR = _REPO_ROOT / os.environ.get("MEMORY_SYSTEM_DIR", ".memory-s
 _V1_CONTEXT = _MEMORY_SYSTEM_DIR / "V1-static-context/project.md"
 _V1_CONSTRAINTS = _MEMORY_SYSTEM_DIR / "V1-static-context/constraints.md"
 _V1_STORY_TEMPLATE = _MEMORY_SYSTEM_DIR / "templates/story-template.md"
+_V1_STORY_TEMPLATE_JIRA = _MEMORY_SYSTEM_DIR / "templates/story-template-jira.md"
+
+
+def _story_template_path() -> pathlib.Path:
+    target = os.environ.get("TARGET_SYSTEM", "github").strip().lower() or "github"
+    return _V1_STORY_TEMPLATE_JIRA if target == "jira" else _V1_STORY_TEMPLATE
+
+
 _V2_DOMAIN = _MEMORY_SYSTEM_DIR / "V2-shared-truth/domain.md"
 _V2_REGISTER = _MEMORY_SYSTEM_DIR / "V2-shared-truth/story_register.md"
 _AGENTS_DIR = _MEMORY_SYSTEM_DIR / "team"
@@ -725,20 +733,9 @@ def update_issue_status_in_development(issue_number: int, wiki_path: str, repo_r
     _append_status_history(full_path, "in_development")
 
     try:
-        result = subprocess.run(
-            ["gh", "issue", "edit", str(issue_number), "--repo", _GITHUB_REPO,
-             "--body", updated_body],
-            capture_output=True, text=True, cwd=repo_root, timeout=30,
-        )
-    except FileNotFoundError:
-        raise RuntimeError("Příkaz 'gh' nebyl nalezen.")
-    except subprocess.TimeoutExpired:
-        raise RuntimeError("Aktualizace GitHub issue trvala příliš dlouho (timeout 30s).")
-
-    if result.returncode != 0:
-        raise RuntimeError(
-            f"'gh issue edit' selhal: {result.stderr.strip() or 'neznámá chyba'}"
-        )
+        get_provider().update_body(issue_number, updated_body)
+    except RuntimeError:
+        raise
 
 
 def _get_issue_info(issue_number: int, repo_root: str) -> dict:
@@ -862,13 +859,14 @@ def launch_implement_agent(session_id: str, issue_number: int, store) -> None:
 
 def launch_clarify_agent(session_id: str, issue_number: int, store) -> None:
     """Spustí /clarify agenta — čte pouze story soubor, bez memory systému."""
-    import shutil
+    import shutil, time as _time
     store.update_session(session_id, status="analyzing", validation_phase="clarify-start")
     claude_bin = shutil.which("claude") or "/opt/homebrew/bin/claude"
     cmd = [claude_bin, "-p", f"/clarify {issue_number}", "--output-format", "json"]
     env = os.environ.copy()
     env["TF_SESSION_ID"] = session_id
     env["TF_API_PORT"] = os.environ.get("PORT", "5001")
+    t0 = _time.time()
     try:
         result = subprocess.run(cmd, stdin=subprocess.DEVNULL, capture_output=True, text=True,
                                 cwd=str(_REPO_ROOT), env=env)
@@ -878,12 +876,21 @@ def launch_clarify_agent(session_id: str, issue_number: int, store) -> None:
     except Exception as e:
         store.update_session(session_id, status="error", error=f"Nepodařilo se spustit agenta: {e}")
         return
-
+    duration_s = _time.time() - t0
     if result.returncode != 0:
         store.update_session(session_id, status="error",
                              error=f"Agent /clarify skončil s chybou (exit {result.returncode}).")
         return
-
+    cost_usd = 0.0
+    try:
+        out = _json.loads(result.stdout)
+        cost_usd = float(out.get("total_cost_usd", 0.0) or 0.0)
+    except Exception:
+        pass
+    session = store.get_session(session_id)
+    wiki_path = (session or {}).get("wiki_path") or (session or {}).get("form_data", {}).get("wiki_path")
+    if wiki_path:
+        _write_phase_metric(_REPO_ROOT / wiki_path, "Clarify", cost_usd, duration_s)
     store.update_session(session_id, status="done", validation_phase="clarify-finished")
 
 
@@ -944,6 +951,107 @@ def launch_analyze_agent(session_id: str, issue_number: int, store) -> None:
             pass
 
     store.update_session(session_id, status="done", validation_phase="done")
+
+
+_PHASE_METRIC_LABELS = {
+    "analyze-PO": "Product Owner",
+    "analyze-CO": "Conflict Detector",
+    "analyze-AR": "Architect",
+    "clarify":    "Clarify",
+}
+
+_PHASE_AGENT_FILE = {
+    "clarify":    "clarify.md",
+    "analyze-PO": "product-owner.md",
+    "analyze-CO": "conflict-detector.md",
+    "analyze-AR": "architekt.md",
+}
+
+
+def _model_for_phase(command: str) -> str | None:
+    agent_file = _PHASE_AGENT_FILE.get(command)
+    if not agent_file:
+        return None
+    path = _MEMORY_SYSTEM_DIR / "team" / agent_file
+    try:
+        for line in path.read_text(encoding="utf-8").splitlines():
+            if line.startswith("model:"):
+                return line.split(":", 1)[1].strip() or None
+    except Exception:
+        pass
+    return None
+
+
+def _write_phase_metric(full_wiki: pathlib.Path, label: str, cost_usd: float, duration_s: float) -> None:
+    if not full_wiki.exists():
+        return
+    try:
+        content = full_wiki.read_text(encoding="utf-8")
+        metric_line = f"- {label}: ${cost_usd:.4f} · čas {_format_duration(duration_s)}"
+        escaped = re.escape(label)
+        if "## Metriky" not in content:
+            content += f"\n## Metriky\n{metric_line}\n- Celkem: $0.0000\n"
+        elif re.search(rf"^- {escaped}:", content, re.MULTILINE):
+            content = re.sub(rf"(?m)^- {escaped}:.*$", metric_line, content, count=1)
+        elif re.search(r"^- Celkem:", content, re.MULTILINE):
+            content = re.sub(r"(?m)^(- Celkem:)", rf"{metric_line}\n\1", content, count=1)
+        else:
+            content = re.sub(r"(## Metriky\n)", rf"\1{metric_line}\n", content, count=1)
+        full_wiki.write_text(content, encoding="utf-8")
+    except Exception:
+        pass
+
+
+def _launch_analysis_phase_agent(session_id: str, issue_number: int, store, command: str, phase_start: str, phase_done: str) -> None:
+    import shutil, time as _time
+    store.update_session(session_id, status="analyzing", validation_phase=phase_start)
+    claude_bin = shutil.which("claude") or "/opt/homebrew/bin/claude"
+    model = _model_for_phase(command)
+    cmd = [claude_bin, "-p", f"/{command} {issue_number}", "--output-format", "json"]
+    if model:
+        cmd += ["--model", model]
+    env = os.environ.copy()
+    env["TF_SESSION_ID"] = session_id
+    env["TF_API_PORT"] = os.environ.get("PORT", "5001")
+    t0 = _time.time()
+    try:
+        result = subprocess.run(cmd, stdin=subprocess.DEVNULL, capture_output=True, text=True,
+                                cwd=str(_REPO_ROOT), env=env)
+    except FileNotFoundError:
+        store.update_session(session_id, status="error", error=f"claude CLI nenalezeno ({claude_bin}).")
+        return
+    except Exception as e:
+        store.update_session(session_id, status="error", error=f"Nepodařilo se spustit agenta: {e}")
+        return
+    duration_s = _time.time() - t0
+    if result.returncode != 0:
+        store.update_session(session_id, status="error",
+                             error=f"Agent /{command} skončil s chybou (exit {result.returncode}).")
+        return
+    cost_usd = 0.0
+    try:
+        out = _json.loads(result.stdout)
+        cost_usd = float(out.get("total_cost_usd", 0.0) or 0.0)
+    except Exception:
+        pass
+    session = store.get_session(session_id)
+    wiki_path = (session or {}).get("wiki_path") or (session or {}).get("form_data", {}).get("wiki_path")
+    if wiki_path:
+        metric_label = _PHASE_METRIC_LABELS.get(command, command)
+        _write_phase_metric(_REPO_ROOT / wiki_path, metric_label, cost_usd, duration_s)
+    store.update_session(session_id, status="done", validation_phase=phase_done)
+
+
+def launch_analyze_po_agent(session_id: str, issue_number: int, store) -> None:
+    _launch_analysis_phase_agent(session_id, issue_number, store, "analyze-PO", "analyze-po-start", "analyze-po-done")
+
+
+def launch_analyze_co_agent(session_id: str, issue_number: int, store) -> None:
+    _launch_analysis_phase_agent(session_id, issue_number, store, "analyze-CO", "analyze-co-start", "analyze-co-done")
+
+
+def launch_analyze_ar_agent(session_id: str, issue_number: int, store) -> None:
+    _launch_analysis_phase_agent(session_id, issue_number, store, "analyze-AR", "analyze-ar-start", "analyze-ar-done")
 
 
 def _parse_figma_url(url: str) -> tuple[str, str | None]:

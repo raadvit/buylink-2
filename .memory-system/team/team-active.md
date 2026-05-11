@@ -22,7 +22,7 @@ Per-projekt konfigurace, kteří agenti jsou v aktuální iteraci aktivní.
 | ux-designer | ❌ | Nedefinován v této verzi |
 | qa-inzenyr | ❌ | Nedefinován v této verzi |
 | security-auditor | ❌ | Nedefinován v této verzi |
-| dokumentarista | ❌ | Nedefinován v této verzi |
+| dokumentarista | ✅ | Sync V2 po mergi story — `/sync-docs US-NNN` |
 | ops-monitor | ❌ | Nedefinován v této verzi |
 
 ## Pravidla

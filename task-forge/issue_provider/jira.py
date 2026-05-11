@@ -14,6 +14,7 @@ při inicializaci provideru. Project prefix čte `JIRA_PROJECTS_FILTER` (default
 from __future__ import annotations
 
 import json as _json
+import mimetypes
 import os
 import pathlib
 import re
@@ -22,6 +23,7 @@ import sys
 import urllib.error
 import urllib.parse
 import urllib.request
+import uuid as _uuid
 from typing import Any
 
 from . import _wiki
@@ -75,6 +77,72 @@ _DEFAULT_STATUS_NAMES = {
     "JIRA_STATUS_BLOCKED":           "Blocked",
     "JIRA_STATUS_CANCELLED":         "Cancelled",
 }
+
+
+def _jira_to_markdown(body: str) -> str:
+    """Konvertuje Jira wiki markup na Markdown (pro lokální wiki soubory)."""
+    lines = body.split("\n")
+    result = []
+    for line in lines:
+        if line.startswith("h1. "):
+            result.append("# " + line[4:])
+        elif line.startswith("h2. "):
+            result.append("## " + line[4:])
+        elif line.startswith("h3. "):
+            result.append("### " + line[4:])
+        elif line.startswith(" * "):
+            result.append("- " + line[3:])
+        elif line.startswith(" - "):
+            result.append("- " + line[3:])
+        else:
+            result.append(line)
+    return "\n".join(result)
+
+
+def _markdown_to_jira(body: str) -> str:
+    """Konvertuje Markdown na Jira wiki markup (pro JIRA API).
+
+    Metadata před první ## sekcí → ' - prefix'; obsah v sekcích → ' * prefix'.
+    Pokud Figma_image metadata existuje a je Design sekce, vloží thumbnail.
+    Inline konverze: **bold** → *bold*, číslované seznamy, inline kód.
+    """
+    lines = body.split("\n")
+    result = []
+    in_metadata = True
+    for i, line in enumerate(lines):
+        if i == 0 and line.startswith("# "):
+            result.append("h1. " + line[2:])
+        elif line.startswith("## "):
+            in_metadata = False
+            result.append("h2. " + line[3:])
+        elif line.startswith("### "):
+            result.append("h3. " + line[4:])
+        elif re.match(r"^\d+\. ", line) and not in_metadata:
+            # Číslovaný seznam → Jira ordered list
+            result.append("# " + re.sub(r"^\d+\. ", "", line))
+        elif line.startswith("- ") and in_metadata:
+            result.append(" - " + line[2:])
+        elif line.startswith("- ") and not in_metadata:
+            result.append(" * " + line[2:])
+        else:
+            result.append(line)
+    jira_body = "\n".join(result)
+    # **bold** → *bold*
+    jira_body = re.sub(r"\*\*([^*\n]+)\*\*", r"*\1*", jira_body)
+    # `inline code` → {{code}}
+    jira_body = re.sub(r"`([^`\n]+)`", r"{{\1}}", jira_body)
+    # Figma thumbnail
+    figma_m = re.search(r"(?m)^ - Figma_image:\s*(.+)$", jira_body)
+    if figma_m and re.search(r"h2\. Design", jira_body):
+        img_name = pathlib.Path(figma_m.group(1).strip()).name
+        thumbnail = f"!{img_name}|thumbnail!"
+        if thumbnail not in jira_body:
+            jira_body = re.sub(
+                r"(h2\. Design[^\n]*\n)",
+                rf"\1 - {thumbnail}\n",
+                jira_body, count=1,
+            )
+    return jira_body
 
 
 class JiraProvider:
@@ -175,6 +243,49 @@ class JiraProvider:
         except urllib.error.URLError as e:
             raise RuntimeError(f"JIRA spojení selhalo {path}: {e.reason}")
 
+    # ── attachment upload ──────────────────────────────────────────────────
+
+    def _upload_attachment(self, jira_key: str, filename: str, data: bytes) -> None:
+        """Nahraje soubor jako přílohu Jira ticketu přes multipart/form-data."""
+        boundary = _uuid.uuid4().hex
+        ctype = mimetypes.guess_type(filename)[0] or "application/octet-stream"
+        body = (
+            f"--{boundary}\r\n"
+            f'Content-Disposition: form-data; name="file"; filename="{filename}"\r\n'
+            f"Content-Type: {ctype}\r\n"
+            "\r\n"
+        ).encode("utf-8") + data + f"\r\n--{boundary}--\r\n".encode("utf-8")
+
+        url = f"{self.base_url}/rest/api/2/issue/{jira_key}/attachments"
+        headers = {
+            "Authorization": f"Bearer {self.token}",
+            "X-Atlassian-Token": "no-check",
+            "Content-Type": f"multipart/form-data; boundary={boundary}",
+        }
+        req = urllib.request.Request(url=url, data=body, method="POST", headers=headers)
+
+        ctx: ssl.SSLContext | None = None
+        if not self.ssl_verify and url.lower().startswith("https"):
+            ctx = ssl.create_default_context()
+            ctx.check_hostname = False
+            ctx.verify_mode = ssl.CERT_NONE
+
+        try:
+            with urllib.request.urlopen(req, timeout=_TIMEOUT, context=ctx) as resp:
+                resp.read()
+        except urllib.error.HTTPError as e:
+            try:
+                detail = e.read().decode("utf-8", errors="replace")
+            except Exception:
+                detail = ""
+            raise RuntimeError(f"JIRA attachment upload HTTP {e.code} ({filename}): {detail or e.reason}")
+        except urllib.error.URLError as e:
+            raise RuntimeError(f"JIRA attachment upload selhalo ({filename}): {e.reason}")
+
+    def upload_attachment_bytes(self, issue_number: int, filename: str, data: bytes) -> None:
+        """Nahraje bytes jako přílohu Jira ticketu."""
+        self._upload_attachment(self.jira_key(issue_number), filename, data)
+
     # ── shape mapper ───────────────────────────────────────────────────────
 
     def _to_issue_shape(self, j_issue: dict) -> dict:
@@ -216,6 +327,7 @@ class JiraProvider:
         files=None,
         labels: list[str] | None = None,
     ) -> dict:
+        # body je vždy Markdown (z _build_draft_body()); lokální wiki = Markdown, Jira API = Jira markup
         root = pathlib.Path(repo_root)
         stories_dir = root / "wiki" / "stories"
         stories_dir.mkdir(parents=True, exist_ok=True)
@@ -224,7 +336,7 @@ class JiraProvider:
         fields: dict[str, Any] = {
             "project": {"key": self.project},
             "summary": title,
-            "description": body,
+            "description": _markdown_to_jira(body),
             "issuetype": {"name": issuetype},
         }
         if labels:
@@ -246,25 +358,31 @@ class JiraProvider:
         story_id = f"US-{issue_number:03d}"
         wiki_path = stories_dir / f"{story_id}.md"
 
-        # Zapiš JIRA klíč + target_system do wiki frontmatteru a dolad GitHub placeholder.
+        # Inject Jira metadata do Markdown body; lokální wiki = Markdown
         updated_body = self._inject_jira_metadata(body, jira_key)
         wiki_path.write_text(updated_body, encoding="utf-8")
 
-        # Přílohy (pouze lokálně — JIRA attachments jsou out-of-scope).
+        final_body = updated_body
         if files:
             assets_dir, md_prefix = _wiki.assets_info(root, story_id, epic)
             saved = _wiki.save_files_to_assets(files, assets_dir)
             if saved:
                 final_body = updated_body + _wiki.attachments_section(saved, md_prefix)
                 wiki_path.write_text(final_body, encoding="utf-8")
-                # Sync zpět do JIRA description.
-                try:
-                    self._request(
-                        "PUT", f"/rest/api/2/issue/{jira_key}",
-                        body={"fields": {"description": final_body}},
-                    )
-                except Exception as e:
-                    print(f"[jira] Varování: update description selhal: {e}", file=sys.stderr)
+                for fname in saved:
+                    try:
+                        self._upload_attachment(jira_key, fname, (assets_dir / fname).read_bytes())
+                    except Exception as e:
+                        print(f"[jira] Varování: příloha {fname} nebyla nahrána: {e}", file=sys.stderr)
+
+        # Aktualizuj Jira ticket s metadaty (a příp. attachmenty) — konverze Markdown → Jira markup
+        try:
+            self._request(
+                "PUT", f"/rest/api/2/issue/{jira_key}",
+                body={"fields": {"description": _markdown_to_jira(final_body)}},
+            )
+        except Exception as e:
+            print(f"[jira] Varování: update description selhal: {e}", file=sys.stderr)
 
         relative_wiki_path = str(wiki_path.relative_to(root))
         _wiki.git_commit_wiki(relative_wiki_path, root, f"[{story_id}] wiki: vytvoření story")
@@ -288,6 +406,7 @@ class JiraProvider:
         files=None,
         epic: str = "",
     ) -> dict:
+        # body je vždy Markdown; lokální wiki = Markdown, Jira API = Jira markup
         root = pathlib.Path(repo_root)
         full_path = (root / wiki_path).resolve()
         if not full_path.is_relative_to(root.resolve()):
@@ -309,21 +428,26 @@ class JiraProvider:
             assets_dir, md_prefix = _wiki.assets_info(root, story_id, epic)
             saved = _wiki.save_files_to_assets(files, assets_dir)
             if saved:
-                new_section = _wiki.attachments_section(saved, md_prefix)
+                new_links = "\n".join(
+                    f"- [{fname}]({md_prefix}/{fname})" for fname in saved
+                )
                 if existing_attachments:
-                    new_links = "\n".join(
-                        f"- [{fname}]({md_prefix}/{fname})" for fname in saved
-                    )
                     final_body = body + existing_attachments.rstrip() + "\n" + new_links
                 else:
-                    final_body = body + new_section
+                    final_body = body + _wiki.attachments_section(saved, md_prefix)
+                for fname in saved:
+                    try:
+                        self._upload_attachment(jira_key, fname, (assets_dir / fname).read_bytes())
+                    except Exception as e:
+                        print(f"[jira] Varování: příloha {fname} nebyla nahrána: {e}", file=sys.stderr)
 
+        # Lokální wiki = Markdown; Jira API dostane konvertovaný Jira markup
         full_path.write_text(final_body, encoding="utf-8")
 
         try:
             self._request(
                 "PUT", f"/rest/api/2/issue/{jira_key}",
-                body={"fields": {"summary": title, "description": final_body}},
+                body={"fields": {"summary": title, "description": _markdown_to_jira(final_body)}},
             )
         except FileNotFoundError as e:
             raise RuntimeError(f"JIRA issue {jira_key} nenalezena: {e}")
@@ -345,12 +469,10 @@ class JiraProvider:
         files,
         epic: str = "",
     ) -> None:
-        # JIRA attachments jsou out-of-scope (multipart upload na /rest/api/2/issue/{key}/attachments
-        # vyžaduje X-Atlassian-Token header a multipart/form-data — necháme na pozdější story).
-        # Lokálně přílohy uložíme do assets a commitneme, abychom zachovali wiki invariant.
         root = pathlib.Path(repo_root)
         full_path = root / wiki_path
         story_id = pathlib.Path(wiki_path).stem
+        jira_key = self.jira_key(issue_number)
 
         if not full_path.exists():
             raise RuntimeError(f"Wiki soubor nenalezen: {wiki_path}")
@@ -372,15 +494,19 @@ class JiraProvider:
 
         full_path.write_text(final_content, encoding="utf-8")
 
-        # Sync description do JIRA (best-effort).
         try:
-            jira_key = self.jira_key(issue_number)
             self._request(
                 "PUT", f"/rest/api/2/issue/{jira_key}",
-                body={"fields": {"description": final_content}},
+                body={"fields": {"description": _markdown_to_jira(final_content)}},
             )
         except Exception as e:
             print(f"[jira] Varování: nepodařilo se aktualizovat description: {e}", file=sys.stderr)
+
+        for fname in saved:
+            try:
+                self._upload_attachment(jira_key, fname, (assets_dir / fname).read_bytes())
+            except Exception as e:
+                print(f"[jira] Varování: příloha {fname} nebyla nahrána: {e}", file=sys.stderr)
 
     def list_issues(self, state: str) -> list[dict]:
         if state not in ("open", "closed", "all"):
@@ -415,11 +541,12 @@ class JiraProvider:
         return self._to_issue_shape(data)
 
     def update_body(self, issue_number: int, body: str) -> None:
+        # body je vždy Markdown; konvertujeme na Jira markup před odesláním do API
         jira_key = self.jira_key(issue_number)
         try:
             self._request(
                 "PUT", f"/rest/api/2/issue/{jira_key}",
-                body={"fields": {"description": body}},
+                body={"fields": {"description": _markdown_to_jira(body)}},
             )
         except FileNotFoundError as e:
             raise RuntimeError(f"JIRA issue {jira_key} nenalezena: {e}")
@@ -467,34 +594,42 @@ class JiraProvider:
     # ── helpers ────────────────────────────────────────────────────────────
 
     def _inject_jira_metadata(self, body: str, jira_key: str) -> str:
-        """Přidá `- jira_key:` a `- target_system: jira` do metadat wiki.
+        """Přidá `jira_key` a `target_system` do metadat wiki.
 
-        Hledá první výskyt `- Status:` a vkládá řádky před něj. Pokud řádky už existují,
-        nahradí je.
+        Podporuje Markdown formát (`- Status:`) i Jira markup formát (` - Status:`).
         """
-        # GitHub placeholder: nahradíme za jira_key, abychom v body neměli "- GitHub: " prázdné.
-        # Pozor: `\s*` matchuje i \n; používáme [ \t]* aby substituce nepřeskočila řádek.
-        body = re.sub(r"(?m)^(- GitHub:[ \t]*).*$", rf"\g<1>{jira_key}", body, count=1)
+        is_jira_fmt = bool(re.match(r"\s*h1\.", body))
+        pfx = " - " if is_jira_fmt else "- "
+        status_marker = f"{pfx}Status:"
 
-        if re.search(r"(?m)^- jira_key:\s*", body):
-            body = re.sub(r"(?m)^- jira_key:\s*.*$", f"- jira_key: {jira_key}", body, count=1)
+        if is_jira_fmt:
+            # Jira markup: nahradíme placeholder " - Jira: " za key
+            body = re.sub(r"(?m)^ - Jira:[ \t]*.*$", f" - Jira: {jira_key}", body, count=1)
         else:
-            if "- Status:" in body:
-                body = body.replace(
-                    "- Status:", f"- jira_key: {jira_key}\n- Status:", 1
-                )
-            else:
-                body = body.rstrip() + f"\n- jira_key: {jira_key}\n"
+            # Markdown: nahradíme "- GitHub: " za key
+            body = re.sub(r"(?m)^(- GitHub:[ \t]*).*$", rf"\g<1>{jira_key}", body, count=1)
 
-        if re.search(r"(?m)^- target_system:\s*", body):
+        jira_key_line = f"{pfx}jira_key:"
+        if jira_key_line in body:
             body = re.sub(
-                r"(?m)^- target_system:\s*.*$", "- target_system: jira", body, count=1
+                rf"(?m)^{re.escape(jira_key_line)}.*$",
+                f"{jira_key_line} {jira_key}", body, count=1,
             )
         else:
-            if "- Status:" in body:
-                body = body.replace(
-                    "- Status:", "- target_system: jira\n- Status:", 1
-                )
+            if status_marker in body:
+                body = body.replace(status_marker, f"{jira_key_line} {jira_key}\n{status_marker}", 1)
             else:
-                body = body.rstrip() + "\n- target_system: jira\n"
+                body = body.rstrip() + f"\n{jira_key_line} {jira_key}\n"
+
+        target_line = f"{pfx}target_system:"
+        if target_line in body:
+            body = re.sub(
+                rf"(?m)^{re.escape(target_line)}.*$",
+                f"{target_line} jira", body, count=1,
+            )
+        else:
+            if status_marker in body:
+                body = body.replace(status_marker, f"{target_line} jira\n{status_marker}", 1)
+            else:
+                body = body.rstrip() + f"\n{target_line} jira\n"
         return body

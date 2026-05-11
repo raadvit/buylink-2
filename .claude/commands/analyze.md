@@ -69,6 +69,7 @@ Spusť agenta `product-owner` (instrukce v `.memory-system/team/product-owner.md
 - Figma screenshot (pokud existuje — viz krok 1)
 - `.memory-system/V1-static-context/project.md`
 - `.memory-system/V2-shared-truth/story_register.md`
+- Šablonou: `.memory-system/templates/story-template.md`
 
 **Před analýzou zkontroluj sekci `## Clarify`** ve story souboru. Pokud existuje:
 - Přečti otázky a jejich odpovědi (formát `1. otázka → odpověď`)
@@ -80,7 +81,16 @@ curl -sf -X POST "http://localhost:${TF_API_PORT}/api/session/${TF_SESSION_ID}/p
   -d "{\"type\":\"message\",\"text\":\"Nalezeny odpovědi na clarify otázky — zapracovávám do analýzy.\",\"agent\":\"Product Owner\"}" || true
 ```
 
-PO ověří srozumitelnost story a doplní `reads_sections` / `writes_sections` (sekce domain modelu, které story čte/mění).
+**PO přepíše story do formátu šablony.** Toto je jeho hlavní úkol:
+1. Přidá YAML frontmatter (`---`) s povinnými poli (`id`, `title`, `epic`, `status`, `reads`, `writes`, `depends_on`)
+2. Přepíše/doplní **`## Business Context`** — proč to děláme, jaký problém řeší, pro koho
+3. Přepíše/doplní **`## User Story`** — formát: *As a [role] / I want [akce] / So that [hodnota]*
+4. Doplní **`## Acceptance Criteria`** — alespoň 3 konkrétní, testovatelné AC (checkbox formát). Pokud existuje Figma, AC musí pokrývat vizuální prvky ze screenshotu
+5. Doplní **`## Out of Scope`** — explicitně co story NEDĚLÁ
+6. Odhadne **`reads`** a **`writes`** v frontmatteru — sekce domain/api modelu, které story čte nebo mění. Pro čistě FE story bez API/DB změn: `reads: []`, `writes: []`
+7. Zachová původní obsah (design popis, Figma odkaz, jak se chová) — přesune ho do správných sekcí, ale nepřepisuje vizuální specifikaci
+
+Výstupem PO je **kompletně přepsaný wiki soubor** v šabloně. Ulož přes Edit nástroj.
 
 **PO nesmí klást otázky uživateli v chatu.** Pokud story obsahuje zásadní nejasnosti bez odpovědí v sekci `## Clarify`, nastav `needs-clarify` a zapiš otázky:
 
@@ -147,7 +157,7 @@ python3 task-forge/status_history.py wiki/stories/US-{id}.md ready-for-arch
 
 ### 4. Architekt (Fáze 1 — technické anotace)
 
-Pokud story nemá `reads_sections` ani `writes_sections` (triviální story), přeskoč Architekta a pokračuj krokem 5.
+Architekta přeskoč **pouze** pokud story explicitně obsahuje `arch_skip: true` v hlavičce. Ve všech ostatních případech vždy spusť — i FE-only story potřebuje implementační plán.
 
 Spusť agenta `architekt` (instrukce v `.memory-system/team/architekt.md`) s:
 - Výstupem PO (text story)

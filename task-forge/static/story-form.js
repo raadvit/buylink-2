@@ -18,9 +18,11 @@ function parseWikiSections(md) {
   const out = {};
   let key = 'Metadata', buf = [];
   for (const line of md.split('\n')) {
-    if (/^## /.test(line)) {
+    // Markdown: "## Section" i Jira markup: "h2. Section"
+    const h2 = line.match(/^(?:## |h2\. )(.+)/);
+    if (h2) {
       if (buf.length) out[key] = buf.join('\n').trim();
-      key = line.slice(3).trim();
+      key = h2[1].trim();
       buf = [];
     } else {
       buf.push(line);
@@ -33,11 +35,36 @@ function parseWikiSections(md) {
 function parseMetadata(metaSection) {
   const out = {};
   for (const line of (metaSection || '').split('\n')) {
-    // Starý formát: "- Key: value" i nový YAML formát: "key: value"
-    const m = line.match(/^-?\s*(\w[\w\s\/]*?):\s*(.+)/);
+    // Markdown: "- Key: value", Jira markup: " - Key: value", YAML: "key: value"
+    const m = line.match(/^[ \t]*-?\s*(\w[\w\s\/]*?):\s*(.+)/);
     if (m) out[m[1].trim().toLowerCase()] = m[2].trim();
   }
   return out;
+}
+
+// Odstraní bullet prefix ("- ", " * ", " - ") ze začátku každého řádku
+function stripBullets(text) {
+  return (text || '').split('\n')
+    .map(l => l.replace(/^ ?[*\-] /, ''))
+    .join('\n')
+    .trim();
+}
+
+// Parsuje sekci Design: extrahuje Figma URL, přeskočí thumbnail, zbytek je shows
+function parseDesignSection(sectionContent) {
+  let figmaUrl = '';
+  const showLines = [];
+  for (const line of (sectionContent || '').split('\n')) {
+    const stripped = line.replace(/^ ?[*\-] /, '');
+    if (!figmaUrl && /^https?:\/\/\S+$/.test(stripped)) {
+      figmaUrl = stripped;
+    } else if (/^!.+\|thumbnail!/.test(stripped)) {
+      // thumbnail — zachovat v Jira, nezobrazit na FE
+    } else {
+      showLines.push(stripped);
+    }
+  }
+  return { figmaUrl, shows: showLines.join('\n').trim() };
 }
 
 function storyDataFromApi(apiData) {
@@ -46,25 +73,28 @@ function storyDataFromApi(apiData) {
   const roles    = (meta['role'] || apiData.role || '')
     .split(/[,\s]+/).map(r => r.trim()).filter(Boolean);
 
+  const designRaw = sections['Design (Co se zobrazuje)'] || sections['Co se zobrazuje'] || '';
+  const { figmaUrl: figmaFromDesign, shows: parsedShows } = parseDesignSection(designRaw);
+
   return {
     issueId:  apiData.id,
     title:    apiData.title || '',
     epic:     apiData.epic  || meta['epic'] || '',
     status:   apiData.story_status || meta['status'] || '',
     role:     roles,
-    why:      sections['Why / Business Goal'] || sections['Business popis'] || sections['Business Context'] || '',
-    shows:     sections['Co se zobrazuje'] || '',
-    behaves:   sections['Jak se to chová']  || '',
+    why:      stripBullets(sections['Why / Business Goal'] || sections['Business popis'] || sections['Business Context'] || ''),
+    shows:    parsedShows,
+    behaves:  stripBullets(sections['Jak se to chová']  || ''),
     userStory: sections['User Story'] || '',
-    risk:     sections['Rizikové situace / Nestandardní scénáře'] || '',
-    open:     sections['Otevřené otázky / Blokery'] || sections['Open Questions'] || '',
+    risk:     stripBullets(sections['Rizikové situace'] || sections['Rizikové situace / Nestandardní scénáře'] || ''),
+    open:     stripBullets(sections['Otevřené otázky'] || sections['Otevřené otázky / Blokery'] || sections['Open Questions'] || ''),
     ac:            sections['Acceptance Criteria'] || sections['Akceptační kritéria'] || '',
     testCases:     sections['Test cases'] || sections['Test Cases'] || '',
     agentNotes:    sections['Poznámky agenta'] || '',
     techNotes:     sections['Technické poznámky (Architekt)'] || sections['Technické poznámky'] || sections['Architecture Notes'] || '',
     domainChanges: sections['Domain Changes'] || sections['Doménové změny'] || '',
     implPlan:      sections['Implementation Plan'] || sections['Implementační plán'] || '',
-    figma_url:        meta['figma'] || '',
+    figma_url:        figmaFromDesign || meta['figma'] || '',
     figma_image_path: meta['figma_image'] || '',
   };
 }

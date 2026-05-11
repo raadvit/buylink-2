@@ -26,7 +26,7 @@ Po validaci pilotu rekalibrace, případně přechod na **PRODUKCE** režim s vy
 
 | Agent | Tier | Aktuální model |
 |---|---|---|
-| product-owner | L2 | claude-haiku-4-5-20251001 |
+| product-owner | L2 | claude-sonnet-4-6 |
 | conflict-detector | L2 | claude-haiku-4-5-20251001 |
 | architekt | L3 | claude-sonnet-4-6 |
 | backend-developer | L2 | claude-haiku-4-5-20251001 |
