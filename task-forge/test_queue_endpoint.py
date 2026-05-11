@@ -16,7 +16,7 @@ import importlib.util as _ilu
 
 _spec = _ilu.spec_from_file_location(
     "task_forge",
-    Path(__file__).resolve().parent / "task-forge.py",
+    Path(__file__).resolve().parent / "main.py",
 )
 _mod = _ilu.module_from_spec(_spec)
 _spec.loader.exec_module(_mod)
@@ -231,6 +231,83 @@ class TestEnqueueEndpointHappyPath(unittest.TestCase):
         self.assertTrue(json.loads(resp.data).get("ok"))
         calls = [str(c) for c in mock_run.call_args_list]
         self.assertTrue(any("queue-analysis" in c for c in calls))
+
+
+class TestEnqueuePhaseValidation(unittest.TestCase):
+    def setUp(self):
+        app.config["TESTING"] = True
+        self.client = app.test_client()
+
+    def test_phase_wiki_not_found_returns_404(self):
+        for phase_type in ("clarify", "analyze-po", "analyze-co", "analyze-ar"):
+            with self.subTest(phase_type=phase_type):
+                resp = self.client.post(
+                    "/api/queue",
+                    data=json.dumps({"issue_number": 99999, "type": phase_type}),
+                    content_type="application/json",
+                )
+                self.assertEqual(resp.status_code, 404, msg=f"phase={phase_type}")
+
+
+class TestEnqueuePhaseHappyPath(unittest.TestCase):
+    def setUp(self):
+        app.config["TESTING"] = True
+        self.client = app.test_client()
+
+    def _post_phase(self, issue_number: int, phase_type: str, tmp_root):
+        original_root = _mod._REPO_ROOT
+        _mod._REPO_ROOT = tmp_root
+        try:
+            return self.client.post(
+                "/api/queue",
+                data=json.dumps({"issue_number": issue_number, "type": phase_type}),
+                content_type="application/json",
+            )
+        finally:
+            _mod._REPO_ROOT = original_root
+
+    def _make_wiki(self, tmp_root, issue_number: int) -> None:
+        from pathlib import Path
+        wiki_dir = Path(tmp_root) / "wiki" / "stories"
+        wiki_dir.mkdir(parents=True, exist_ok=True)
+        (wiki_dir / f"US-{issue_number:03d}.md").write_text("# Test\n- Status: draft\n", encoding="utf-8")
+
+    @patch.object(story_builder, "launch_clarify_agent")
+    def test_clarify_enqueues_and_returns_200(self, mock_launch):
+        with tempfile.TemporaryDirectory() as tmp:
+            self._make_wiki(tmp, 9001)
+            resp = self._post_phase(9001, "clarify", Path(tmp))
+        self.assertEqual(resp.status_code, 200)
+        body = json.loads(resp.data)
+        self.assertTrue(body.get("ok"))
+        self.assertIn("session_id", body)
+        self.assertIn("queue_position", body)
+
+    @patch.object(story_builder, "launch_analyze_po_agent")
+    def test_analyze_po_enqueues_and_returns_200(self, mock_launch):
+        with tempfile.TemporaryDirectory() as tmp:
+            self._make_wiki(tmp, 9002)
+            resp = self._post_phase(9002, "analyze-po", Path(tmp))
+        self.assertEqual(resp.status_code, 200)
+        body = json.loads(resp.data)
+        self.assertTrue(body.get("ok"))
+        self.assertIn("session_id", body)
+
+    @patch.object(story_builder, "launch_analyze_co_agent")
+    def test_analyze_co_enqueues_and_returns_200(self, mock_launch):
+        with tempfile.TemporaryDirectory() as tmp:
+            self._make_wiki(tmp, 9003)
+            resp = self._post_phase(9003, "analyze-co", Path(tmp))
+        self.assertEqual(resp.status_code, 200)
+        self.assertTrue(json.loads(resp.data).get("ok"))
+
+    @patch.object(story_builder, "launch_analyze_ar_agent")
+    def test_analyze_ar_enqueues_and_returns_200(self, mock_launch):
+        with tempfile.TemporaryDirectory() as tmp:
+            self._make_wiki(tmp, 9004)
+            resp = self._post_phase(9004, "analyze-ar", Path(tmp))
+        self.assertEqual(resp.status_code, 200)
+        self.assertTrue(json.loads(resp.data).get("ok"))
 
 
 class TestSessionByIssueEndpoint(unittest.TestCase):

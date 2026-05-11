@@ -11,7 +11,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 _spec = _ilu.spec_from_file_location(
     "task_forge",
-    Path(__file__).resolve().parent / "task-forge.py",
+    Path(__file__).resolve().parent / "main.py",
 )
 _mod = _ilu.module_from_spec(_spec)
 _spec.loader.exec_module(_mod)

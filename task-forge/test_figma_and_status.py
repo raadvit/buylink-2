@@ -14,7 +14,7 @@ import importlib.util as _ilu
 
 _spec = _ilu.spec_from_file_location(
     "task_forge",
-    Path(__file__).resolve().parent / "task-forge.py",
+    Path(__file__).resolve().parent / "main.py",
 )
 _mod = _ilu.module_from_spec(_spec)
 _spec.loader.exec_module(_mod)
@@ -48,12 +48,13 @@ class TestUpdateIssueStatusNoDuplicates(unittest.TestCase):
         wiki_content = self._make_wiki("new")
         with (
             tempfile.TemporaryDirectory() as tmp,
-            patch.object(story_builder.subprocess, "run") as mock_run,
+            patch.object(story_builder, "get_provider") as mock_get_provider,
         ):
             wiki_path = Path(tmp) / "wiki/stories/US-182.md"
             wiki_path.parent.mkdir(parents=True)
             wiki_path.write_text(wiki_content)
-            mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
+            mock_provider = MagicMock()
+            mock_get_provider.return_value = mock_provider
 
             story_builder.update_issue_status_in_development(
                 182, "wiki/stories/US-182.md", tmp
@@ -62,17 +63,18 @@ class TestUpdateIssueStatusNoDuplicates(unittest.TestCase):
             result = wiki_path.read_text()
             self.assertEqual(self._count_status_lines(result), 1)
             self.assertIn("- Status: in-development", result)
+            mock_provider.update_body.assert_called_once()
 
     def test_repeated_calls_no_duplicates(self):
         wiki_content = self._make_wiki("new")
         with (
             tempfile.TemporaryDirectory() as tmp,
-            patch.object(story_builder.subprocess, "run") as mock_run,
+            patch.object(story_builder, "get_provider") as mock_get_provider,
         ):
             wiki_path = Path(tmp) / "wiki/stories/US-182.md"
             wiki_path.parent.mkdir(parents=True)
             wiki_path.write_text(wiki_content)
-            mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
+            mock_get_provider.return_value = MagicMock()
 
             for _ in range(3):
                 story_builder.update_issue_status_in_development(
@@ -87,12 +89,12 @@ class TestUpdateIssueStatusNoDuplicates(unittest.TestCase):
         wiki_content = self._make_wiki("in-development", extra_status_lines=2)
         with (
             tempfile.TemporaryDirectory() as tmp,
-            patch.object(story_builder.subprocess, "run") as mock_run,
+            patch.object(story_builder, "get_provider") as mock_get_provider,
         ):
             wiki_path = Path(tmp) / "wiki/stories/US-182.md"
             wiki_path.parent.mkdir(parents=True)
             wiki_path.write_text(wiki_content)
-            mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
+            mock_get_provider.return_value = MagicMock()
 
             story_builder.update_issue_status_in_development(
                 182, "wiki/stories/US-182.md", tmp
@@ -116,8 +118,7 @@ class TestInsertFigmaImagePath(unittest.TestCase):
 
             original = _mod._REPO_ROOT
             _mod._REPO_ROOT = Path(tmp)
-            with patch.object(_mod.subprocess, "run") as mock_run:
-                mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
+            with patch.object(_mod, "get_provider", return_value=MagicMock()):
                 try:
                     _insert_figma_image_path(wiki_rel, 99, saved_path)
                 finally:

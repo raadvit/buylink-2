@@ -54,6 +54,7 @@ import story_builder
 import wiki_chat
 from issue_provider import get_provider
 from issue_provider import _wiki as _wiki_helpers
+from issue_provider.jira import _jira_to_markdown as _jira_to_md
 from queue_manager import AnalysisQueue, ImplementQueue
 
 
@@ -61,6 +62,13 @@ _GITHUB_REPO = os.environ.get("GITHUB_REPO", "")
 _analysis_queue = AnalysisQueue(max_workers=max(1, int(os.environ.get("MAX_WORKERS", "1"))))
 _implement_queue = ImplementQueue(max_workers=1)
 _poller_event = threading.Event()
+
+_PHASE_LAUNCH_FNS = {
+    "clarify": lambda: story_builder.launch_clarify_agent,
+    "analyze-po": lambda: story_builder.launch_analyze_po_agent,
+    "analyze-co": lambda: story_builder.launch_analyze_co_agent,
+    "analyze-ar": lambda: story_builder.launch_analyze_ar_agent,
+}
 
 app = Flask(__name__, static_folder=str(_STATIC_DIR))
 
@@ -83,33 +91,34 @@ def _ensure_queue_labels() -> None:
         )
 
 
+def _normalize_wiki_to_markdown(full_wiki: Path) -> None:
+    """Pokud je wiki soubor v Jira markup formátu, převede ho na Markdown."""
+    if not full_wiki.exists():
+        return
+    try:
+        content = full_wiki.read_text(encoding="utf-8")
+        if re.match(r"\s*h1\. ", content) or bool(re.search(r"^h2\. ", content, re.MULTILINE)):
+            full_wiki.write_text(_jira_to_md(content), encoding="utf-8")
+    except Exception as e:
+        app.logger.warning("Nepodařilo se normalizovat wiki na Markdown: %s", e)
+
+
 def _enqueue_analysis(issue_number: int, title: str) -> tuple[str, int]:
     wiki_path = f"{_WIKI_DIR}/US-{issue_number:03d}.md"
     full_wiki = _REPO_ROOT / wiki_path
     if not full_wiki.exists():
         raise FileNotFoundError(f"Wiki soubor {wiki_path} neexistuje.")
+    _normalize_wiki_to_markdown(full_wiki)
     try:
         content = full_wiki.read_text(encoding="utf-8")
-        content = re.sub(r"^- Status: .+$", "- Status: draft", content, flags=re.MULTILINE)
+        content = re.sub(r"^ ?- Status: .+$", "- Status: draft", content, flags=re.MULTILINE)
         full_wiki.write_text(content, encoding="utf-8")
     except Exception as e:
         app.logger.warning("Nepodařilo se nastavit status draft ve wiki: %s", e)
     try:
-        view_result = subprocess.run(
-            ["gh", "issue", "view", str(issue_number), "--repo", _GITHUB_REPO, "--json", "body"],
-            capture_output=True, text=True, cwd=str(_REPO_ROOT), timeout=15,
-        )
-        if view_result.returncode == 0:
-            issue_body = _json.loads(view_result.stdout).get("body", "") or ""
-            updated_body = re.sub(r"(?m)^(- Status:)\s*.+$", r"\1 draft", issue_body)
-            if updated_body == issue_body:
-                updated_body = f"- Status: draft\n{issue_body}"
-            subprocess.run(
-                ["gh", "issue", "edit", str(issue_number), "--repo", _GITHUB_REPO, "--body", updated_body],
-                capture_output=True, text=True, cwd=str(_REPO_ROOT), timeout=15,
-            )
+        get_provider().update_body(issue_number, full_wiki.read_text(encoding="utf-8"))
     except Exception as e:
-        app.logger.warning("Nepodařilo se nastavit status draft v GitHub issue: %s", e)
+        app.logger.warning("Nepodařilo se aktualizovat issue při startu analýzy: %s", e)
     session_id = str(uuid.uuid4())
     store_state.create_session(session_id, {"issue_number": issue_number, "wiki_path": wiki_path, "name": title})
 
@@ -137,6 +146,7 @@ def _enqueue_development(issue_number: int) -> tuple[str, int]:
             full_wiki.write_text(issue_info.get("body", ""), encoding="utf-8")
         except Exception as e:
             app.logger.warning("Nepodařilo se vytvořit wiki soubor pro #%d: %s", issue_number, e)
+    _normalize_wiki_to_markdown(full_wiki)
     session_id = str(uuid.uuid4())
     store_state.create_session(session_id, {"issue_number": issue_number, "wiki_path": wiki_path, "name": ""})
 
@@ -157,6 +167,18 @@ def _enqueue_development(issue_number: int) -> tuple[str, int]:
         session_id, issue_number,
         story_builder.launch_implement_agent, _update_status, store_state,
     )
+    return session_id, position
+
+
+def _enqueue_phase(issue_number: int, queue_type: str) -> tuple[str, int]:
+    wiki_path = f"{_WIKI_DIR}/US-{issue_number:03d}.md"
+    full_wiki = _REPO_ROOT / wiki_path
+    if not full_wiki.exists():
+        raise FileNotFoundError(f"Wiki soubor {wiki_path} neexistuje.")
+    session_id = str(uuid.uuid4())
+    store_state.create_session(session_id, {"issue_number": issue_number, "wiki_path": wiki_path, "name": ""})
+    launch_fn = _PHASE_LAUNCH_FNS[queue_type]()
+    position = _analysis_queue.submit(session_id, issue_number, launch_fn, store_state)
     return session_id, position
 
 
@@ -291,9 +313,9 @@ def get_issue(issue_number):
 
     labels = [l["name"] for l in issue.get("labels", [])]
     body = issue.get("body") or ""
-    epic_match = re.search(r"(?:^- Epic:|^epic:)\s*([^\n]+)", body, re.MULTILINE)
-    role_match = re.search(r"(?:^- Role:|^role:)\s*([^\n]+)", body, re.MULTILINE)
-    status_match = re.search(r"(?:^- Status:|^status:)\s*([^\n]+)", body, re.MULTILINE)
+    epic_match = re.search(r"(?:^ ?- Epic:|^epic:)\s*([^\n]+)", body, re.MULTILINE)
+    role_match = re.search(r"(?:^ ?- Role:|^role:)\s*([^\n]+)", body, re.MULTILINE)
+    status_match = re.search(r"(?:^ ?- Status:|^status:)\s*([^\n]+)", body, re.MULTILINE)
     updated = issue.get("updatedAt", "")
 
     wiki_path = _REPO_ROOT / f"{_WIKI_DIR}/US-{issue_number:03d}.md"
@@ -302,7 +324,7 @@ def get_issue(issue_number):
     gh_status = status_match.group(1).strip() if status_match else ""
     wiki_status = ""
     if wiki_content:
-        wiki_status_match = re.search(r"(?:^- Status:|^status:)\s*([^\n]+)", wiki_content, re.MULTILINE)
+        wiki_status_match = re.search(r"(?:^ ?- Status:|^status:)\s*([^\n]+)", wiki_content, re.MULTILINE)
         if wiki_status_match:
             wiki_status = wiki_status_match.group(1).strip()
     bug_status = _pick_advanced_status(gh_status, wiki_status)
@@ -385,51 +407,28 @@ def _cleanup_memory_for_story(issue_number: int) -> None:
 
 @app.delete("/api/issues/<int:issue_number>")
 def delete_issue(issue_number):
+    provider = get_provider()
     try:
-        result = subprocess.run(
-            ["gh", "issue", "view", str(issue_number), "--repo", _GITHUB_REPO, "--json", "labels"],
-            capture_output=True, text=True, cwd=str(_REPO_ROOT), timeout=30,
-        )
-    except subprocess.TimeoutExpired:
-        return jsonify({"error": "Timeout při načítání issue."}), 502
+        issue_data = provider.get_issue(issue_number)
     except FileNotFoundError:
-        return jsonify({"error": "gh CLI nenalezeno."}), 502
-    if result.returncode != 0:
-        return jsonify({"error": result.stderr.strip() or "Issue nenalezena."}), 404
-    try:
-        issue_data = _json.loads(result.stdout)
-    except Exception:
-        return jsonify({"error": "Nepodařilo se zparsovat výstup."}), 502
+        return jsonify({"error": "Issue nenalezena."}), 404
+    except RuntimeError as e:
+        return jsonify({"error": str(e)}), 502
 
     labels = [l["name"] for l in issue_data.get("labels", [])]
-    if "user story" in labels:
-        wiki_path = _REPO_ROOT / f"{_WIKI_DIR}/US-{issue_number:03d}.md"
-    elif "bug" in labels:
-        wiki_path = _REPO_ROOT / f"{_WIKI_DIR}/US-{issue_number:03d}.md"
-    else:
+    if "user story" not in labels and "bug" not in labels:
         return jsonify({"error": "Neznámý typ issue (chybí label 'user story' nebo 'bug')."}), 422
 
+    wiki_path = _REPO_ROOT / f"{_WIKI_DIR}/US-{issue_number:03d}.md"
     backup = wiki_path.read_text(encoding="utf-8") if wiki_path.exists() else None
     wiki_path.unlink(missing_ok=True)
 
     try:
-        close_result = subprocess.run(
-            ["gh", "issue", "close", str(issue_number), "--repo", _GITHUB_REPO],
-            capture_output=True, text=True, cwd=str(_REPO_ROOT), timeout=30,
-        )
-    except subprocess.TimeoutExpired:
+        provider.close_issue(issue_number)
+    except RuntimeError as e:
         if backup is not None:
             wiki_path.write_text(backup, encoding="utf-8")
-        return jsonify({"error": "Timeout při uzavírání issue."}), 502
-    except FileNotFoundError:
-        if backup is not None:
-            wiki_path.write_text(backup, encoding="utf-8")
-        return jsonify({"error": "gh CLI nenalezeno."}), 502
-
-    if close_result.returncode != 0:
-        if backup is not None:
-            wiki_path.write_text(backup, encoding="utf-8")
-        return jsonify({"error": close_result.stderr.strip() or "gh issue close selhal."}), 502
+        return jsonify({"error": str(e)}), 502
 
     _cleanup_memory_for_story(issue_number)
     return jsonify({"ok": True}), 200
@@ -653,7 +652,7 @@ def get_session():
             full_path = _REPO_ROOT / wiki_path
             try:
                 body = full_path.read_text(encoding="utf-8")
-                m = re.search(r"(?:^- Status:|^status:)\s*([^\n]+)", body, re.MULTILINE)
+                m = re.search(r"(?:^ ?- Status:|^status:)\s*([^\n]+)", body, re.MULTILINE)
                 wiki_status = m.group(1).strip() if m else "draft"
                 phase_map = {
                     "conflict-check": "conflict-check-start",
@@ -681,7 +680,7 @@ def get_session():
             full_path = _REPO_ROOT / wiki_path
             try:
                 body = full_path.read_text(encoding="utf-8")
-                m = re.search(r"(?:^- Status:|^status:)\s*([^\n]+)", body, re.MULTILINE)
+                m = re.search(r"(?:^ ?- Status:|^status:)\s*([^\n]+)", body, re.MULTILINE)
                 if m and m.group(1).strip() in _READY_FOR_TESTING_STATUSES:
                     store_state.update_session(session_id, status="done",
                                                validation_phase="ready_for_testing-start")
@@ -834,9 +833,11 @@ def clarify():
     if not full_wiki.exists():
         return jsonify({"error": f"Wiki soubor {wiki_path} neexistuje."}), 404
 
+    _normalize_wiki_to_markdown(full_wiki)
+
     try:
         content = full_wiki.read_text(encoding="utf-8")
-        content = re.sub(r"^- Status: .+$", "- Status: clarify", content, flags=re.MULTILINE)
+        content = re.sub(r"^ ?- Status: .+$", "- Status: clarify", content, flags=re.MULTILINE)
         full_wiki.write_text(content, encoding="utf-8")
     except Exception as e:
         app.logger.warning("Nepodařilo se nastavit status clarify: %s", e)
@@ -918,7 +919,7 @@ def implement():
     if not is_story and not is_bug:
         return jsonify({"error": "Issue není typu 'user story' nebo 'bug'."}), 400
     body = issue_info.get("body") or ""
-    status_match = re.search(r"(?:^- Status:|^status:)\s*([^\n]+)", body, re.MULTILINE)
+    status_match = re.search(r"(?:^ ?- Status:|^status:)\s*([^\n]+)", body, re.MULTILINE)
     story_status = status_match.group(1).strip() if status_match else ""
     allowed_statuses = {"new"} if is_bug else {"ready-for-arch", "validated", "dev-plan"}
     if story_status not in allowed_statuses:
@@ -982,30 +983,49 @@ def enqueue():
     if not issue_number or issue_number <= 0:
         return jsonify({"error": "Chybí nebo neplatné issue_number."}), 400
     queue_type = str(data.get("type", "")).strip()
-    if queue_type not in ("analysis", "development"):
-        return jsonify({"error": "Neplatný typ (očekáváno 'analysis' nebo 'development')."}), 400
-    label = "queue-analysis" if queue_type == "analysis" else "queue-development"
-    try:
-        issue_info = story_builder._get_issue_info(issue_number, str(_REPO_ROOT))
-    except RuntimeError:
-        return jsonify({"error": "Nepodařilo se načíst issue ze GitHub."}), 500
-    issue_labels = [lb["name"] for lb in issue_info.get("labels", [])]
-    is_story = "user story" in issue_labels
-    is_bug   = "bug" in issue_labels
+    _all_types = {"analysis", "development"} | set(_PHASE_LAUNCH_FNS.keys())
+    if queue_type not in _all_types:
+        return jsonify({"error": f"Neplatný typ (očekáváno: {', '.join(sorted(_all_types))})."}), 400
+
     if queue_type == "development":
+        try:
+            issue_info = story_builder._get_issue_info(issue_number, str(_REPO_ROOT))
+        except RuntimeError:
+            return jsonify({"error": "Nepodařilo se načíst issue ze GitHub."}), 500
+        issue_labels = [lb["name"] for lb in issue_info.get("labels", [])]
+        is_story = "user story" in issue_labels
+        is_bug   = "bug" in issue_labels
         if not is_story and not is_bug:
             return jsonify({"error": "Issue není typu 'user story' nebo 'bug'."}), 400
         body = issue_info.get("body") or ""
-        status_match = re.search(r"(?:^- Status:|^status:)\s*([^\n]+)", body, re.MULTILINE)
+        status_match = re.search(r"(?:^ ?- Status:|^status:)\s*([^\n]+)", body, re.MULTILINE)
         story_status = status_match.group(1).strip() if status_match else ""
         allowed_statuses = {"new"} if is_bug else {"ready-for-arch", "validated", "dev-plan"}
         if story_status not in allowed_statuses:
             lbl_err = "Bug musí být ve stavu new" if is_bug else "Story musí být ve stavu dev-plan nebo validated"
             return jsonify({"error": f"{lbl_err} (aktuální stav: '{story_status}')."}), 400
+    elif queue_type in _PHASE_LAUNCH_FNS:
+        try:
+            session_id, position = _enqueue_phase(issue_number, queue_type)
+        except FileNotFoundError as e:
+            return jsonify({"error": str(e)}), 404
+        except ValueError as e:
+            return jsonify({"error": str(e)}), 422
+        return jsonify({"ok": True, "session_id": session_id, "queue_position": position}), 200
     else:
         wiki_path = _REPO_ROOT / f"{_WIKI_DIR}/US-{issue_number:03d}.md"
         if not wiki_path.exists():
             return jsonify({"error": "Wiki soubor neexistuje."}), 404
+
+    if _is_jira_target() and queue_type == "analysis":
+        try:
+            session_id, position = _enqueue_analysis(issue_number, data.get("name", ""))
+        except (FileNotFoundError, ValueError) as e:
+            return jsonify({"error": str(e)}), 422
+        _poller_event.set()
+        return jsonify({"ok": True, "session_id": session_id, "queue_position": position}), 200
+
+    label = "queue-analysis" if queue_type == "analysis" else "queue-development"
     try:
         r = subprocess.run(
             ["gh", "issue", "edit", str(issue_number), "--repo", _GITHUB_REPO, "--add-label", label],
@@ -1044,6 +1064,16 @@ def _parse_request():
             data = {}
         return data, request.files.getlist('files')
     return request.get_json(silent=True) or {}, []
+
+
+def _is_jira_target() -> bool:
+    return os.environ.get("TARGET_SYSTEM", "github").strip().lower() == "jira"
+
+
+def _extract_markdown_arch_sections(content: str) -> str:
+    """Extrahuje architektovské sekce z Markdown wiki (od ## Architecture Notes dál)."""
+    m = re.search(r"\n\n## Architecture Notes\b", content)
+    return content[m.start():] if m else ""
 
 
 def _build_draft_body(data: dict, status: str = "draft") -> str:
@@ -1092,7 +1122,7 @@ def _build_draft_body(data: dict, status: str = "draft") -> str:
 
 
 def _insert_figma_image_path(wiki_path: str, issue_number: int | None, saved_path: str) -> None:
-    """Vloží nebo aktualizuje řádek '- Figma_image:' v existujícím wiki souboru."""
+    """Vloží nebo aktualizuje řádek 'Figma_image:' v existujícím Markdown wiki souboru."""
     wiki_full = _REPO_ROOT / wiki_path
     try:
         current = wiki_full.read_text(encoding="utf-8")
@@ -1107,16 +1137,18 @@ def _insert_figma_image_path(wiki_path: str, issue_number: int | None, saved_pat
                 current, flags=re.MULTILINE, count=1,
             )
         else:
-            # Vlož před první ## sekci nebo na konec metadat
-            new_wiki = re.sub(r"(\n\n##)", f"\n- Figma_image: {saved_path}\\1", current, count=1)
+            new_wiki = re.sub(
+                r"(\n\n##)", f"\n- Figma_image: {saved_path}\\1",
+                current, count=1,
+            )
             if new_wiki == current:
                 new_wiki = current.rstrip() + f"\n- Figma_image: {saved_path}\n"
         wiki_full.write_text(new_wiki, encoding="utf-8")
         if issue_number:
-            subprocess.run(
-                ["gh", "issue", "edit", str(issue_number), "--repo", _GITHUB_REPO, "--body", new_wiki],
-                capture_output=True, cwd=str(_REPO_ROOT), timeout=15,
-            )
+            try:
+                get_provider().update_body(issue_number, new_wiki)
+            except Exception as e:
+                app.logger.warning("Nepodařilo se aktualizovat issue po vložení thumbnail: %s", e)
     except Exception as e:
         app.logger.warning("Nepodařilo se zapsat figma_image_path do wiki: %s", e)
 
@@ -1233,7 +1265,7 @@ def update_bug():
         )
         if view_result.returncode == 0:
             current_body = _json.loads(view_result.stdout).get("body", "")
-            sm = re.search(r"(?:^- Status:|^status:)\s*([^\n]+)", current_body, re.MULTILINE)
+            sm = re.search(r"(?:^ ?- Status:|^status:)\s*([^\n]+)", current_body, re.MULTILINE)
             if sm:
                 current_status = sm.group(1).strip()
     except Exception:
@@ -1344,7 +1376,21 @@ def update():
         if saved_path:
             data["figma_image_path"] = saved_path
 
+    # Zachovej figma_image_path z existujícího wiki souboru pokud ho payload neobsahuje
+    if not data.get("figma_image_path"):
+        existing_wiki_check = _REPO_ROOT / wiki_path
+        if existing_wiki_check.exists():
+            fi_m = re.search(r"^ ?- Figma_image:\s*(.+)$",
+                             existing_wiki_check.read_text(encoding="utf-8"), re.MULTILINE)
+            if fi_m:
+                data["figma_image_path"] = fi_m.group(1).strip()
+
     body = _build_draft_body(data, status=current_status)
+    existing_wiki = _REPO_ROOT / wiki_path
+    if existing_wiki.exists():
+        arch = _extract_markdown_arch_sections(existing_wiki.read_text(encoding="utf-8"))
+        if arch:
+            body = body + arch
 
     try:
         result = get_provider().update_story(
@@ -1385,9 +1431,9 @@ def get_issues():
             issue_type = "other"
 
         body = issue.get("body") or ""
-        epic_match = re.search(r"(?:^- Epic:|^epic:)\s*([^\n]+)", body, re.MULTILINE)
+        epic_match = re.search(r"(?:^ ?- Epic:|^epic:)\s*([^\n]+)", body, re.MULTILINE)
         epic = epic_match.group(1).strip() if epic_match else ""
-        status_match = re.search(r"(?:^- Status:|^status:)\s*([^\n]+)", body, re.MULTILINE)
+        status_match = re.search(r"(?:^ ?- Status:|^status:)\s*([^\n]+)", body, re.MULTILINE)
         story_status = status_match.group(1).strip() if status_match else ""
 
         cost_match = re.search(r"^- Celkem: \$([0-9]+\.[0-9]+)", body, re.MULTILINE)
@@ -1540,7 +1586,7 @@ def update_bug_status(issue_number):
         return jsonify({"error": "Issue není typu 'bug'."}), 400
 
     current_body = issue_data.get("body") or ""
-    sm = re.search(r"(?:^- Status:|^status:)\s*([^\n]+)", current_body, re.MULTILINE)
+    sm = re.search(r"(?:^ ?- Status:|^status:)\s*([^\n]+)", current_body, re.MULTILINE)
     current_status = sm.group(1).strip() if sm else "new"
 
     allowed = _BUG_STATUS_TRANSITIONS.get(current_status, set())
@@ -1551,7 +1597,7 @@ def update_bug_status(issue_number):
 
     if sm:
         new_body = re.sub(
-            r"(?:^(?:- Status:|status:))\s*[^\n]+",
+            r"(?:^ ?(?:- Status:|status:))\s*[^\n]+",
             f"- Status: {new_status}",
             current_body,
             count=1,
@@ -1582,7 +1628,7 @@ def update_bug_status(issue_number):
     if bug_wiki.exists():
         try:
             wc = bug_wiki.read_text(encoding="utf-8")
-            wc = re.sub(r"(?m)^- Status: .+$", f"- Status: {new_status}", wc, count=1)
+            wc = re.sub(r"(?m)^ ?- Status: .+$", f"- Status: {new_status}", wc, count=1)
             wc = re.sub(r"(?m)^status: .+$", f"status: {new_status}", wc, count=1)
             bug_wiki.write_text(wc, encoding="utf-8")
             _status_history.append(str(bug_wiki), new_status)
@@ -1628,7 +1674,7 @@ def update_story_status(issue_number):
         return jsonify({"error": "Issue není typu 'user story'."}), 400
 
     current_body = issue_data.get("body") or ""
-    sm = re.search(r"(?:^- Status:|^status:)\s*([^\n]+)", current_body, re.MULTILINE)
+    sm = re.search(r"(?:^ ?- Status:|^status:)\s*([^\n]+)", current_body, re.MULTILINE)
     current_status = sm.group(1).strip() if sm else ""
 
     allowed = _STORY_STATUS_TRANSITIONS.get(current_status, set())
@@ -1638,7 +1684,7 @@ def update_story_status(issue_number):
         }), 400
 
     new_body = re.sub(
-        r"(?:^(?:- Status:|status:))\s*[^\n]+",
+        r"(?:^ ?(?:- Status:|status:))\s*[^\n]+",
         f"- Status: {new_status}",
         current_body,
         count=1,
@@ -1659,7 +1705,7 @@ def update_story_status(issue_number):
     if wiki_path.exists():
         try:
             wiki_content = wiki_path.read_text(encoding="utf-8")
-            wiki_content = re.sub(r"(?m)^- Status: .+$", f"- Status: {new_status}", wiki_content, count=1)
+            wiki_content = re.sub(r"(?m)^ ?- Status: .+$", f"- Status: {new_status}", wiki_content, count=1)
             wiki_content = re.sub(r"(?m)^status: .+$", f"status: {new_status}", wiki_content, count=1)
             wiki_path.write_text(wiki_content, encoding="utf-8")
             _status_history.append(str(wiki_path), new_status)
@@ -1667,6 +1713,19 @@ def update_story_status(issue_number):
             app.logger.warning("Nepodařilo se aktualizovat wiki: %s", e)
 
     return jsonify({"success": True, "status": new_status}), 200
+
+
+@app.post("/api/issues/<int:issue_number>/sync-wiki")
+def sync_wiki_to_issue(issue_number: int):
+    wiki_path = _REPO_ROOT / f"{_WIKI_DIR}/US-{issue_number:03d}.md"
+    if not wiki_path.exists():
+        return jsonify({"error": "Wiki soubor neexistuje."}), 404
+    try:
+        body = wiki_path.read_text(encoding="utf-8")
+        get_provider().update_body(issue_number, body)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 502
+    return jsonify({"ok": True}), 200
 
 
 @app.get("/api/chat")

@@ -3,11 +3,13 @@
 Pokrývá:
 - GET /api/issues (list) přes `provider.list_issues`
 - PATCH /api/bugs/<id>/status přes `provider.get_issue` + `update_body` + `transition_status`
+- POST /api/issues/<id>/sync-wiki přes `provider.update_body`
 """
 
 import importlib.util as _ilu
 import json as _json
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch, MagicMock
@@ -16,7 +18,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 _spec = _ilu.spec_from_file_location(
     "task_forge",
-    Path(__file__).resolve().parent / "task-forge.py",
+    Path(__file__).resolve().parent / "main.py",
 )
 _mod = _ilu.module_from_spec(_spec)
 _spec.loader.exec_module(_mod)
@@ -209,6 +211,59 @@ class TestUpdateBugStatus(unittest.TestCase):
         self.assertEqual(resp.status_code, 200)
         provider.update_body.assert_called_once()
         provider.transition_status.assert_called_once_with(71, "done")
+
+
+# ── POST /api/issues/<id>/sync-wiki ─────────────────────────────────────────
+
+
+class TestSyncWikiEndpoint(unittest.TestCase):
+    def setUp(self):
+        app.config["TESTING"] = True
+        self.client = app.test_client()
+
+    def test_missing_wiki_returns_404(self):
+        with (
+            tempfile.TemporaryDirectory() as tmp,
+            patch.object(_mod, "_REPO_ROOT", Path(tmp)),
+        ):
+            resp = self.client.post("/api/issues/99/sync-wiki")
+        self.assertEqual(resp.status_code, 404)
+        self.assertIn("error", resp.get_json())
+
+    def test_provider_failure_returns_502(self):
+        provider = MagicMock()
+        provider.update_body.side_effect = RuntimeError("Jira selhal")
+        with (
+            tempfile.TemporaryDirectory() as tmp,
+        ):
+            wiki_path = Path(tmp) / "wiki/stories/US-099.md"
+            wiki_path.parent.mkdir(parents=True)
+            wiki_path.write_text("# Story\n\n- Status: validated\n")
+            with (
+                patch.object(_mod, "_REPO_ROOT", Path(tmp)),
+                patch.object(_mod, "get_provider", return_value=provider),
+            ):
+                resp = self.client.post("/api/issues/99/sync-wiki")
+        self.assertEqual(resp.status_code, 502)
+        self.assertIn("Jira selhal", resp.get_json()["error"])
+
+    def test_happy_path_calls_update_body_with_wiki_content(self):
+        provider = MagicMock()
+        wiki_content = "# Story\n\n- Status: validated\n- GitHub: #99\n"
+        with (
+            tempfile.TemporaryDirectory() as tmp,
+        ):
+            wiki_path = Path(tmp) / "wiki/stories/US-099.md"
+            wiki_path.parent.mkdir(parents=True)
+            wiki_path.write_text(wiki_content)
+            with (
+                patch.object(_mod, "_REPO_ROOT", Path(tmp)),
+                patch.object(_mod, "get_provider", return_value=provider),
+            ):
+                resp = self.client.post("/api/issues/99/sync-wiki")
+        self.assertEqual(resp.status_code, 200)
+        self.assertTrue(resp.get_json()["ok"])
+        provider.update_body.assert_called_once_with(99, wiki_content)
 
 
 if __name__ == "__main__":

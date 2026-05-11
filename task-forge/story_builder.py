@@ -733,20 +733,9 @@ def update_issue_status_in_development(issue_number: int, wiki_path: str, repo_r
     _append_status_history(full_path, "in_development")
 
     try:
-        result = subprocess.run(
-            ["gh", "issue", "edit", str(issue_number), "--repo", _GITHUB_REPO,
-             "--body", updated_body],
-            capture_output=True, text=True, cwd=repo_root, timeout=30,
-        )
-    except FileNotFoundError:
-        raise RuntimeError("Příkaz 'gh' nebyl nalezen.")
-    except subprocess.TimeoutExpired:
-        raise RuntimeError("Aktualizace GitHub issue trvala příliš dlouho (timeout 30s).")
-
-    if result.returncode != 0:
-        raise RuntimeError(
-            f"'gh issue edit' selhal: {result.stderr.strip() or 'neznámá chyba'}"
-        )
+        get_provider().update_body(issue_number, updated_body)
+    except RuntimeError:
+        raise
 
 
 def _get_issue_info(issue_number: int, repo_root: str) -> dict:
@@ -952,6 +941,42 @@ def launch_analyze_agent(session_id: str, issue_number: int, store) -> None:
             pass
 
     store.update_session(session_id, status="done", validation_phase="done")
+
+
+def _launch_analysis_phase_agent(session_id: str, issue_number: int, store, command: str, phase_start: str, phase_done: str) -> None:
+    import shutil
+    store.update_session(session_id, status="analyzing", validation_phase=phase_start)
+    claude_bin = shutil.which("claude") or "/opt/homebrew/bin/claude"
+    cmd = [claude_bin, "-p", f"/{command} {issue_number}", "--output-format", "json"]
+    env = os.environ.copy()
+    env["TF_SESSION_ID"] = session_id
+    env["TF_API_PORT"] = os.environ.get("PORT", "5001")
+    try:
+        result = subprocess.run(cmd, stdin=subprocess.DEVNULL, capture_output=True, text=True,
+                                cwd=str(_REPO_ROOT), env=env)
+    except FileNotFoundError:
+        store.update_session(session_id, status="error", error=f"claude CLI nenalezeno ({claude_bin}).")
+        return
+    except Exception as e:
+        store.update_session(session_id, status="error", error=f"Nepodařilo se spustit agenta: {e}")
+        return
+    if result.returncode != 0:
+        store.update_session(session_id, status="error",
+                             error=f"Agent /{command} skončil s chybou (exit {result.returncode}).")
+        return
+    store.update_session(session_id, status="done", validation_phase=phase_done)
+
+
+def launch_analyze_po_agent(session_id: str, issue_number: int, store) -> None:
+    _launch_analysis_phase_agent(session_id, issue_number, store, "analyze-PO", "analyze-po-start", "analyze-po-done")
+
+
+def launch_analyze_co_agent(session_id: str, issue_number: int, store) -> None:
+    _launch_analysis_phase_agent(session_id, issue_number, store, "analyze-CO", "analyze-co-start", "analyze-co-done")
+
+
+def launch_analyze_ar_agent(session_id: str, issue_number: int, store) -> None:
+    _launch_analysis_phase_agent(session_id, issue_number, store, "analyze-AR", "analyze-ar-start", "analyze-ar-done")
 
 
 def _parse_figma_url(url: str) -> tuple[str, str | None]:
