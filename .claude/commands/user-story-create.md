@@ -69,8 +69,62 @@ cp {zdrojový soubor} wiki/stories/assets/{ID}/
 ```
 Odkazuj na ně relativní cestou `assets/{ID}/{soubor}` — nikdy absolutní cestou.
 
-### 5. Vytvoř wiki/stories/{ID}.md
-Použij šablonu z `wiki/story-teamplate.md`:
+### 5. Zjisti TARGET_SYSTEM
+```bash
+grep -E '^TARGET_SYSTEM=' .env 2>/dev/null | cut -d= -f2 | tr -d '[:space:]'
+```
+Pokud není nastaven nebo je prázdný, použij `github`.
+
+### 6. Vytvoř wiki/stories/{ID}.md
+
+**Pokud `TARGET_SYSTEM=jira`** — použij Jira wiki markup šablonu (viz `.memory-system/templates/story-template-jira.md`):
+
+```
+h1. {Název}
+ - Epic: {epic}
+ - Role: {role}
+ - Status: new
+ - Vytvořeno: {dnešní datum}
+ - Změněno: {dnešní datum}
+
+h2. Why / Business Goal
+ * {business goal — proč to děláme, jaký problém řešíme}
+
+h2. Design (Co se zobrazuje)
+ - {co se zobrazuje — pole, sekce, komponenty viditelné na obrazovce}
+
+h2. Jak se to chová
+ * {interakce, podmíněná logika, stavy, validace}
+
+h2. Rizikové situace
+ * {edge cases, chybové stavy}
+
+h2. Otevřené otázky
+ * {otázky před implementací}
+
+h2. Architecture Notes
+ * {vyplní Architekt}
+
+h2. Domain Changes
+ * {vyplní Architekt}
+
+h2. API Changes
+ * {vyplní Architekt}
+
+h2. DB Changes
+ * {vyplní Architekt}
+
+h2. Implementation Plan
+ * {vyplní Architekt}
+
+h2. Metriky
+ * {vyplní Architekt}
+
+h2. QA scénáře
+ - {kroky pro manuální testování}
+```
+
+**Pokud `TARGET_SYSTEM=github` nebo není nastaven** — použij Markdown šablonu:
 
 ```markdown
 # {ID}: {Název}
@@ -108,7 +162,28 @@ Jako {role} chci {akce} aby {přínos}.
 {postřehy z validace — dopady na jiné epicy, otevřené otázky}
 ```
 
-### 6. Vytvoř GitHub issue
+### 7. Vytvoř issue
+
+**Pokud `TARGET_SYSTEM=jira`**:
+
+Zjisti project key:
+```bash
+grep -E '^JIRA_PROJECTS_FILTER=' .env 2>/dev/null | cut -d= -f2 | tr -d '[:space:]'
+```
+
+Vytvoř Jira ticket přes MCP `mcp__mcp-atlassian__jira_create_issue`:
+- `project_key`: hodnota z `JIRA_PROJECTS_FILTER`
+- `summary`: `{Název}`
+- `issue_type`: `Story`
+- `description`: obsah wiki souboru (Jira markup)
+
+Po vytvoření přidej do wiki souboru za metadata řádek:
+```
+ - Jira: {PROJEKT-NNN}
+```
+
+**Pokud `TARGET_SYSTEM=github` nebo není nastaven**:
+
 ```bash
 gh issue create \
   --repo {Hlavní repozitář z config} \
@@ -116,8 +191,6 @@ gh issue create \
   --body "{obsah shodný s wiki souborem}"
 ```
 Pokud `gh` selže kvůli chybějícím labelům, vytvoř issue bez labelů.
-
-### 7. Doplň číslo issue do wiki souboru
 Aktualizuj řádek `GitHub:` v `wiki/stories/{ID}.md`.
 
 ### 8. Reportuj výsledek
@@ -125,11 +198,11 @@ Aktualizuj řádek `GitHub:` v `wiki/stories/{ID}.md`.
 Story vytvořena:
 - ID: {ID}
 - Soubor: wiki/stories/{ID}.md
-- GitHub issue: {URL}
+- Issue: {URL nebo Jira key}
 ```
 
 ## Pravidla
-- Story je vždy `Status: draft` při vytvoření
+- Story je vždy `Status: draft` (github) nebo `Status: new` (jira) při vytvoření
 - Přílohy vždy kopíruj do `wiki/stories/assets/{ID}/`, nikdy neodkazuj na absolutní lokální cesty
 - Pokud `gh` není dostupný: `gh auth login`
 - Jeden příkaz = jedna story

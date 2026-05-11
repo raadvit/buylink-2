@@ -1,4 +1,4 @@
-# Analýza user story
+  # Analýza user story
 
 > Spouštěno automaticky přes `claude -p "/analyze {issue_number}"` z task-forge backendu (`story_builder.launch_analyze_agent`).
 > task-forge polling sleduje změny statusu v `wiki/stories/US-{id}.md` — aktualizuj ho po každé fázi.

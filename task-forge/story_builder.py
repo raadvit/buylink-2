@@ -960,6 +960,27 @@ _PHASE_METRIC_LABELS = {
     "clarify":    "Clarify",
 }
 
+_PHASE_AGENT_FILE = {
+    "clarify":    "clarify.md",
+    "analyze-PO": "product-owner.md",
+    "analyze-CO": "conflict-detector.md",
+    "analyze-AR": "architekt.md",
+}
+
+
+def _model_for_phase(command: str) -> str | None:
+    agent_file = _PHASE_AGENT_FILE.get(command)
+    if not agent_file:
+        return None
+    path = _MEMORY_SYSTEM_DIR / "team" / agent_file
+    try:
+        for line in path.read_text(encoding="utf-8").splitlines():
+            if line.startswith("model:"):
+                return line.split(":", 1)[1].strip() or None
+    except Exception:
+        pass
+    return None
+
 
 def _write_phase_metric(full_wiki: pathlib.Path, label: str, cost_usd: float, duration_s: float) -> None:
     if not full_wiki.exists():
@@ -985,7 +1006,10 @@ def _launch_analysis_phase_agent(session_id: str, issue_number: int, store, comm
     import shutil, time as _time
     store.update_session(session_id, status="analyzing", validation_phase=phase_start)
     claude_bin = shutil.which("claude") or "/opt/homebrew/bin/claude"
+    model = _model_for_phase(command)
     cmd = [claude_bin, "-p", f"/{command} {issue_number}", "--output-format", "json"]
+    if model:
+        cmd += ["--model", model]
     env = os.environ.copy()
     env["TF_SESSION_ID"] = session_id
     env["TF_API_PORT"] = os.environ.get("PORT", "5001")

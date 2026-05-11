@@ -44,6 +44,13 @@ Kategorie:
 - **Terminologie** — Nejednoznačné nebo nedefinované pojmy
 - **Completion signals** — Testovatelná acceptance criteria
 
+Automaticky zařaď jako **Chybí** pokud:
+- Sekce nebo podsekce obsahuje pouze `-`
+- Jakýkoli text obsahuje `TBD`, `TODO`, `?`, `nevím`, `doplnit`
+
+Automaticky **přeskoč** sekci (nezařazuj ani jako Chybí) pokud:
+- Sekce obsahuje `---` nebo je zcela prázdná — tyto sekce jsou záměrně nevyplněné
+
 ### 3. Vygeneruj otázky (max 5)
 
 Ze kategorií se stavem **Částečné** nebo **Chybí** vyber max 5 otázek s nejvyšším dopadem na implementaci. Pravidla:
@@ -51,9 +58,9 @@ Ze kategorií se stavem **Částečné** nebo **Chybí** vyber max 5 otázek s n
 - Otázka musí mít přímý dopad na architekturu, datový model, UX chování nebo AC
 - Vyřaď otázky na stylové preference a implementation details
 - Upřednostni otázky, jejichž špatný předpoklad způsobí přepracování
-- Pokud žádné podstatné nejasnosti neexistují, nezapisuj nic a ukonči
+- Pokud žádné podstatné nejasnosti neexistují, pokračuj krokem 4b
 
-### 4. Zapiš do story
+### 4a. Zapiš do story (pokud jsou otázky)
 
 Vytvoř nebo přepiš sekci `## Clarify` v `wiki/stories/US-{id}.md`:
 
@@ -69,21 +76,39 @@ Zachovej existující sekce dokumentu, vlož `## Clarify` těsně před `## Acce
 
 Aktualizuj status na `clarify`:
 ```bash
-sed -i '' 's/^- Status: .*/- Status: clarify/' wiki/stories/US-{id}.md
+sed -i '' 's/^ *- Status: .*/ - Status: clarify/' wiki/stories/US-{id}.md
 python3 task-forge/status_history.py append wiki/stories/US-{id}.md clarify
 ```
 
-### 5. Pošli zprávu
-
+Pošli zprávu:
 ```bash
 curl -sf -X POST "http://localhost:${TF_API_PORT}/api/session/${TF_SESSION_ID}/push" \
   -H "Content-Type: application/json" \
   -d "{\"type\":\"message\",\"text\":\"Otázky jsou připraveny. Odpověz na ně v chatu a klikni Spustit analýzu.\",\"agent\":\"Clarify\"}" || true
 ```
 
+### 4b. Žádné nejasnosti
+
+Pokud story nemá žádné podstatné nejasnosti, aktualizuj status na `draft`:
+```bash
+sed -i '' 's/^ *- Status: .*/ - Status: draft/' wiki/stories/US-{id}.md
+python3 task-forge/status_history.py append wiki/stories/US-{id}.md draft
+```
+
+Synchronizuj s issue systémem:
+```bash
+curl -sf -X POST "http://localhost:${TF_API_PORT:-5001}/api/issues/{číslo}/sync-wiki" || true
+```
+
+Pošli zprávu:
+```bash
+curl -sf -X POST "http://localhost:${TF_API_PORT}/api/session/${TF_SESSION_ID}/push" \
+  -H "Content-Type: application/json" \
+  -d "{\"type\":\"message\",\"text\":\"Žádné kritické nejasnosti — story je připravena k analýze.\",\"agent\":\"Clarify\"}" || true
+```
+
 ## Pravidla
 
 - Nečti žádné soubory kromě `wiki/stories/US-{id}.md`
 - Nečti `.memory-system/`, `.claude/config.md`, domain model ani jiné stories
-- Pokud story nemá žádné podstatné nejasnosti, napiš zprávu "Žádné kritické nejasnosti — story je připravena k analýze." a ukonči bez zápisu sekce `## Clarify`
 - Nikdy necommituj změny do gitu

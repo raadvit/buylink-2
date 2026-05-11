@@ -64,10 +64,10 @@ _implement_queue = ImplementQueue(max_workers=1)
 _poller_event = threading.Event()
 
 _PHASE_LAUNCH_FNS = {
-    "clarify": lambda: story_builder.launch_clarify_agent,
-    "analyze-po": lambda: story_builder.launch_analyze_po_agent,
-    "analyze-co": lambda: story_builder.launch_analyze_co_agent,
-    "analyze-ar": lambda: story_builder.launch_analyze_ar_agent,
+    "clarify":    story_builder.launch_clarify_agent,
+    "analyze-po": story_builder.launch_analyze_po_agent,
+    "analyze-co": story_builder.launch_analyze_co_agent,
+    "analyze-ar": story_builder.launch_analyze_ar_agent,
 }
 
 app = Flask(__name__, static_folder=str(_STATIC_DIR))
@@ -191,7 +191,7 @@ def _enqueue_phase(issue_number: int, queue_type: str) -> tuple[str, int]:
         raise FileNotFoundError(f"Wiki soubor {wiki_path} neexistuje.")
     session_id = str(uuid.uuid4())
     store_state.create_session(session_id, {"issue_number": issue_number, "wiki_path": wiki_path, "name": "", "queue_type": queue_type})
-    launch_fn = _PHASE_LAUNCH_FNS[queue_type]()
+    launch_fn = _PHASE_LAUNCH_FNS[queue_type]
     position = _analysis_queue.submit(session_id, issue_number, launch_fn, store_state)
     return session_id, position
 

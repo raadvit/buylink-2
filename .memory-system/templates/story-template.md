@@ -70,33 +70,32 @@ conflict_check_iterations: 0  # increment Conflict Detector
 
 ## Implementation Plan
 
-### Backend kroky
-1. [Krok 1 — co a kde]
-2. [Krok 2]
+### FE
+- [krok 1]
+- [krok 2]
 
-### Frontend kroky
-1. [Krok 1 — co a kde]
-2. [Krok 2]
+### BE
+- [krok 1]
+
+### DB
+- [migrace / schéma]
 
 ### Dotčené soubory
-**Backend:**
-- `path/to/file.py` — [popis změny]
 
-**Frontend:**
-- `path/to/template.html` — [popis změny]
-- `path/to/script.js` — [popis změny]
+**FE:**
+- `path/to/component.tsx` — [popis změny]
 
-### Migrace databáze
-- [Pokud je třeba: nová tabulka / sloupce / index]
+**BE:**
+- `path/to/module.py` — [popis změny]
+
+**DB:**
+- `migrations/NNN_nazev.sql` — [popis]
 
 ### Test plán
-- **Unit testy (BE):** [co testovat]
-- **Unit testy (FE):** [co testovat]
-- **Integrační testy:** [co testovat end-to-end]
-- **Manuální QA scénář** (povinné pro `ready_for_testing`):
-  1. [Klikací krok 1]
-  2. [Krok 2]
-  3. [Očekávaný výsledek]
+- BE unit testy: [co testovat]
+- FE unit testy: [co testovat]
+- Integrační testy: [co testovat end-to-end]
+- Manuální QA scénář: viz níže
 
 ---
 
