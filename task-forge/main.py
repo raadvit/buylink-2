@@ -123,6 +123,8 @@ def _enqueue_analysis(issue_number: int, title: str) -> tuple[str, int]:
     store_state.create_session(session_id, {"issue_number": issue_number, "wiki_path": wiki_path, "name": title})
 
     def _pre_start():
+        if _is_jira_target():
+            return
         try:
             subprocess.run(
                 ["gh", "issue", "edit", str(issue_number), "--repo", _GITHUB_REPO,
@@ -1027,7 +1029,8 @@ def enqueue():
             session_id, position = _enqueue_development(issue_number)
         except (FileNotFoundError, ValueError) as e:
             return jsonify({"error": str(e)}), 422
-        _add_github_label_async(issue_number, "queue-development")
+        if not _is_jira_target():
+            _add_github_label_async(issue_number, "queue-development")
         return jsonify({"ok": True, "session_id": session_id, "queue_position": position}), 200
 
     if queue_type in _PHASE_LAUNCH_FNS:
@@ -1046,7 +1049,8 @@ def enqueue():
         return jsonify({"error": str(e)}), 404
     except ValueError as e:
         return jsonify({"error": str(e)}), 422
-    _add_github_label_async(issue_number, "queue-analysis")
+    if not _is_jira_target():
+        _add_github_label_async(issue_number, "queue-analysis")
     return jsonify({"ok": True, "session_id": session_id, "queue_position": position}), 200
 
 

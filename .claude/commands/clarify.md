@@ -76,7 +76,7 @@ Zachovej existující sekce dokumentu, vlož `## Clarify` těsně před `## Acce
 
 Aktualizuj status na `clarify`:
 ```bash
-sed -i '' 's/^ *- Status: .*/ - Status: clarify/' wiki/stories/US-{id}.md
+sed -i '' 's/^ *- Status: .*/- Status: clarify/' wiki/stories/US-{id}.md
 python3 task-forge/status_history.py append wiki/stories/US-{id}.md clarify
 ```
 
@@ -91,7 +91,7 @@ curl -sf -X POST "http://localhost:${TF_API_PORT}/api/session/${TF_SESSION_ID}/p
 
 Pokud story nemá žádné podstatné nejasnosti, aktualizuj status na `draft`:
 ```bash
-sed -i '' 's/^ *- Status: .*/ - Status: draft/' wiki/stories/US-{id}.md
+sed -i '' 's/^ *- Status: .*/- Status: draft/' wiki/stories/US-{id}.md
 python3 task-forge/status_history.py append wiki/stories/US-{id}.md draft
 ```
 
