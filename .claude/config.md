@@ -4,6 +4,11 @@
 
 - **Main_repo** (user stories, issues, PR): `/`
 
+## Analýza
+
+- **generate_acceptance_criteria**: true
+- **architect_creates_implementation_plan**: true
+
 ## QA
 
 
