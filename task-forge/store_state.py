@@ -1,4 +1,5 @@
 import threading
+import time
 import uuid
 
 
@@ -24,6 +25,8 @@ def create_session(session_id: str, form_data: dict) -> dict:
         "total_tokens": 0,
         "validation_phase": None,
         "validation_agent": None,
+        "created_at": time.time(),
+        "started_at": None,
     }
     with _lock:
         _store[session_id] = session
@@ -43,6 +46,8 @@ def update_session(session_id: str, **kwargs) -> None:
         session = _store.get(session_id)
         if session is None:
             return
+        if kwargs.get("status") == "analyzing" and session.get("started_at") is None:
+            kwargs.setdefault("started_at", time.time())
         session.update(kwargs)
 
 

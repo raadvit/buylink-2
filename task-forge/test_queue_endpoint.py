@@ -99,35 +99,18 @@ class TestEnqueueEndpointExternalErrors(unittest.TestCase):
         )
         self.assertEqual(resp.status_code, 500)
 
+    # GitHub label se přidává async (fire-and-forget) — jeho selhání neovlivní HTTP odpověď.
+    # Testujeme tedy že enqueue proběhne úspěšně i když gh selže.
     @patch.object(story_builder, "_get_issue_info", return_value=_make_issue_info(status="new"))
     @patch("subprocess.run", return_value=MagicMock(returncode=1, stderr="label error"))
-    def test_gh_label_add_failure_returns_502(self, _mock_run, _mock_info):
+    def test_gh_label_failure_does_not_block_enqueue(self, _mock_run, _mock_info):
         resp = self.client.post(
             "/api/queue",
-            data=json.dumps({"issue_number": 42, "type": "development"}),
+            data=json.dumps({"issue_number": 9010, "type": "development"}),
             content_type="application/json",
         )
-        self.assertEqual(resp.status_code, 502)
-
-    @patch.object(story_builder, "_get_issue_info", return_value=_make_issue_info(status="new"))
-    @patch("subprocess.run", side_effect=subprocess.TimeoutExpired("gh", 15))
-    def test_gh_timeout_returns_502(self, _mock_run, _mock_info):
-        resp = self.client.post(
-            "/api/queue",
-            data=json.dumps({"issue_number": 42, "type": "development"}),
-            content_type="application/json",
-        )
-        self.assertEqual(resp.status_code, 502)
-
-    @patch.object(story_builder, "_get_issue_info", return_value=_make_issue_info(status="new"))
-    @patch("subprocess.run", side_effect=FileNotFoundError("gh not found"))
-    def test_gh_not_found_returns_502(self, _mock_run, _mock_info):
-        resp = self.client.post(
-            "/api/queue",
-            data=json.dumps({"issue_number": 42, "type": "development"}),
-            content_type="application/json",
-        )
-        self.assertEqual(resp.status_code, 502)
+        self.assertEqual(resp.status_code, 200)
+        self.assertTrue(json.loads(resp.data).get("ok"))
 
 
 class TestEnqueueEndpointBusinessValidation(unittest.TestCase):
@@ -200,7 +183,7 @@ class TestEnqueueEndpointHappyPath(unittest.TestCase):
     def test_development_story_happy_path_returns_200(self, mock_run, _mock_info):
         resp = self.client.post(
             "/api/queue",
-            data=json.dumps({"issue_number": 42, "type": "development"}),
+            data=json.dumps({"issue_number": 9020, "type": "development"}),
             content_type="application/json",
         )
         self.assertEqual(resp.status_code, 200)
@@ -349,6 +332,42 @@ class TestSessionByIssueEndpoint(unittest.TestCase):
         store_state.update_session(sid, status="error")
         resp = self.client.get("/api/session/by-issue?issue_number=44")
         self.assertEqual(resp.status_code, 404)
+
+
+class TestQueueStatusEndpoint(unittest.TestCase):
+    def setUp(self):
+        app.config["TESTING"] = True
+        self.client = app.test_client()
+
+    def test_returns_200_with_items_list(self):
+        resp = self.client.get("/api/queue-status")
+        self.assertEqual(resp.status_code, 200)
+        body = json.loads(resp.data)
+        self.assertIn("items", body)
+        self.assertIsInstance(body["items"], list)
+
+    def test_queued_session_appears(self):
+        sid = "test-qs-queued-8800"
+        store_state.create_session(sid, {"issue_number": 8800, "wiki_path": "wiki/stories/US-8800.md", "name": "Test story", "queue_type": "analyze-po"})
+        store_state.update_session(sid, status="queued", queue_position=1)
+        try:
+            resp = self.client.get("/api/queue-status")
+            body = json.loads(resp.data)
+            found = next((i for i in body["items"] if i["session_id"] == sid), None)
+            self.assertIsNotNone(found)
+            self.assertEqual(found["command"], "/analyze-PO")
+            self.assertEqual(found["issue_number"], 8800)
+        finally:
+            store_state.update_session(sid, status="done")
+
+    def test_done_session_not_in_queue(self):
+        sid = "test-qs-done-8801"
+        store_state.create_session(sid, {"issue_number": 8801, "wiki_path": "wiki/stories/US-8801.md", "name": "", "queue_type": "clarify"})
+        store_state.update_session(sid, status="done")
+        resp = self.client.get("/api/queue-status")
+        body = json.loads(resp.data)
+        found = next((i for i in body["items"] if i["session_id"] == sid), None)
+        self.assertIsNone(found)
 
 
 if __name__ == "__main__":

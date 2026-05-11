@@ -170,13 +170,27 @@ def _enqueue_development(issue_number: int) -> tuple[str, int]:
     return session_id, position
 
 
+def _add_github_label_async(issue_number: int, label: str) -> None:
+    if not _GITHUB_REPO:
+        return
+    def _run():
+        try:
+            subprocess.run(
+                ["gh", "issue", "edit", str(issue_number), "--repo", _GITHUB_REPO, "--add-label", label],
+                capture_output=True, text=True, cwd=str(_REPO_ROOT), timeout=15,
+            )
+        except Exception:
+            pass
+    threading.Thread(target=_run, daemon=True).start()
+
+
 def _enqueue_phase(issue_number: int, queue_type: str) -> tuple[str, int]:
     wiki_path = f"{_WIKI_DIR}/US-{issue_number:03d}.md"
     full_wiki = _REPO_ROOT / wiki_path
     if not full_wiki.exists():
         raise FileNotFoundError(f"Wiki soubor {wiki_path} neexistuje.")
     session_id = str(uuid.uuid4())
-    store_state.create_session(session_id, {"issue_number": issue_number, "wiki_path": wiki_path, "name": ""})
+    store_state.create_session(session_id, {"issue_number": issue_number, "wiki_path": wiki_path, "name": "", "queue_type": queue_type})
     launch_fn = _PHASE_LAUNCH_FNS[queue_type]()
     position = _analysis_queue.submit(session_id, issue_number, launch_fn, store_state)
     return session_id, position
@@ -281,6 +295,11 @@ def story_detail(issue_number):
 @app.get("/bug-<int:issue_number>")
 def bug_detail(issue_number):
     return send_from_directory(str(_STATIC_DIR), "bug-detail.html")
+
+
+@app.get("/queue")
+def queue_page():
+    return send_from_directory(str(_STATIC_DIR), "queue.html")
 
 
 @app.errorhandler(404)
@@ -1004,7 +1023,14 @@ def enqueue():
         if story_status not in allowed_statuses:
             lbl_err = "Bug musí být ve stavu new" if is_bug else "Story musí být ve stavu dev-plan nebo validated"
             return jsonify({"error": f"{lbl_err} (aktuální stav: '{story_status}')."}), 400
-    elif queue_type in _PHASE_LAUNCH_FNS:
+        try:
+            session_id, position = _enqueue_development(issue_number)
+        except (FileNotFoundError, ValueError) as e:
+            return jsonify({"error": str(e)}), 422
+        _add_github_label_async(issue_number, "queue-development")
+        return jsonify({"ok": True, "session_id": session_id, "queue_position": position}), 200
+
+    if queue_type in _PHASE_LAUNCH_FNS:
         try:
             session_id, position = _enqueue_phase(issue_number, queue_type)
         except FileNotFoundError as e:
@@ -1012,33 +1038,53 @@ def enqueue():
         except ValueError as e:
             return jsonify({"error": str(e)}), 422
         return jsonify({"ok": True, "session_id": session_id, "queue_position": position}), 200
-    else:
-        wiki_path = _REPO_ROOT / f"{_WIKI_DIR}/US-{issue_number:03d}.md"
-        if not wiki_path.exists():
-            return jsonify({"error": "Wiki soubor neexistuje."}), 404
 
-    if _is_jira_target() and queue_type == "analysis":
-        try:
-            session_id, position = _enqueue_analysis(issue_number, data.get("name", ""))
-        except (FileNotFoundError, ValueError) as e:
-            return jsonify({"error": str(e)}), 422
-        _poller_event.set()
-        return jsonify({"ok": True, "session_id": session_id, "queue_position": position}), 200
-
-    label = "queue-analysis" if queue_type == "analysis" else "queue-development"
+    # analysis
     try:
-        r = subprocess.run(
-            ["gh", "issue", "edit", str(issue_number), "--repo", _GITHUB_REPO, "--add-label", label],
-            capture_output=True, text=True, cwd=str(_REPO_ROOT), timeout=15,
-        )
-        if r.returncode != 0:
-            return jsonify({"error": "Nepodařilo se přidat label do issue."}), 502
-    except subprocess.TimeoutExpired:
-        return jsonify({"error": "Timeout."}), 502
-    except FileNotFoundError:
-        return jsonify({"error": "gh CLI nenalezeno."}), 502
-    _poller_event.set()
-    return jsonify({"ok": True}), 200
+        session_id, position = _enqueue_analysis(issue_number, data.get("name", ""))
+    except FileNotFoundError as e:
+        return jsonify({"error": str(e)}), 404
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 422
+    _add_github_label_async(issue_number, "queue-analysis")
+    return jsonify({"ok": True, "session_id": session_id, "queue_position": position}), 200
+
+
+_QUEUE_TYPE_COMMAND = {
+    "clarify":    "/clarify",
+    "analyze-po": "/analyze-PO",
+    "analyze-co": "/analyze-CO",
+    "analyze-ar": "/analyze-AR",
+    "analysis":   "/analyze",
+    "development": "/implement",
+}
+
+
+@app.get("/api/queue-status")
+def queue_status():
+    active_statuses = {"queued", "analyzing"}
+    sessions = store_state.all_sessions()
+    items = []
+    for sid, session in sessions.items():
+        status = session.get("status", "")
+        if status not in active_statuses:
+            continue
+        fd = session.get("form_data", {})
+        issue_number = fd.get("issue_number")
+        queue_type = fd.get("queue_type") or ("development" if (session.get("validation_phase") or "").startswith("development") else "analysis")
+        items.append({
+            "session_id": sid,
+            "issue_number": issue_number,
+            "name": fd.get("name") or "",
+            "status": status,
+            "queue_position": session.get("queue_position", 0),
+            "queue_type": queue_type,
+            "command": _QUEUE_TYPE_COMMAND.get(queue_type, queue_type),
+            "created_at": session.get("created_at"),
+            "started_at": session.get("started_at"),
+        })
+    items.sort(key=lambda x: (x["status"] != "analyzing", x["queue_position"]))
+    return jsonify({"items": items}), 200
 
 
 @app.get("/api/session/by-issue")

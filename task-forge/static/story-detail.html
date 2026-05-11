@@ -245,7 +245,38 @@
       // Vykresli timeline
       const tlContainer = root.querySelector('#story-timeline-container');
       if (tlContainer && typeof renderTimelineInline === 'function') {
-        renderTimelineInline(tlContainer, data.status || '');
+        const _pm = typeof parsePhaseMetrics === 'function' ? parsePhaseMetrics(apiData.wiki || '') : {};
+        renderTimelineInline(tlContainer, data.status || '', { phaseMetrics: _pm });
+      }
+
+      // Kliknutí na akci kroku v timeline → zařadit do fronty
+      if (tlContainer && !tlContainer._actionBound) {
+        tlContainer._actionBound = true;
+        tlContainer.addEventListener('click', async (e) => {
+          const link = e.target.closest('.tl-action');
+          if (!link) return;
+          e.preventDefault();
+          const queueType = link.dataset.queueType;
+          if (!queueType) return;
+          link.style.opacity = '0.4';
+          link.style.pointerEvents = 'none';
+          try {
+            const res = await fetch('/api/queue', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ issue_number: issueNumber, type: queueType }),
+            });
+            if (!res.ok) {
+              const err = await res.json().catch(() => ({}));
+              alert(err.error || `Chyba ${res.status}`);
+            }
+          } catch {
+            alert('Nepodařilo se odeslat požadavek.');
+          } finally {
+            link.style.opacity = '';
+            link.style.pointerEvents = '';
+          }
+        });
       }
 
       // Zobraz blocker důvod v chatu pokud je story blocked
@@ -724,7 +755,8 @@
           if (label) { addChatMsg(label); setStatus(label.replace('…', '')); }
           const tlContainer = root.querySelector('#story-timeline-container');
           if (tlContainer && typeof renderTimelineInline === 'function') {
-            renderTimelineInline(tlContainer, phase);
+            const _pm = typeof parsePhaseMetrics === 'function' ? parsePhaseMetrics((_apiData || {}).wiki || '') : {};
+            renderTimelineInline(tlContainer, phase, { phaseMetrics: _pm });
           }
         }
 

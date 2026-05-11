@@ -859,13 +859,14 @@ def launch_implement_agent(session_id: str, issue_number: int, store) -> None:
 
 def launch_clarify_agent(session_id: str, issue_number: int, store) -> None:
     """Spustí /clarify agenta — čte pouze story soubor, bez memory systému."""
-    import shutil
+    import shutil, time as _time
     store.update_session(session_id, status="analyzing", validation_phase="clarify-start")
     claude_bin = shutil.which("claude") or "/opt/homebrew/bin/claude"
     cmd = [claude_bin, "-p", f"/clarify {issue_number}", "--output-format", "json"]
     env = os.environ.copy()
     env["TF_SESSION_ID"] = session_id
     env["TF_API_PORT"] = os.environ.get("PORT", "5001")
+    t0 = _time.time()
     try:
         result = subprocess.run(cmd, stdin=subprocess.DEVNULL, capture_output=True, text=True,
                                 cwd=str(_REPO_ROOT), env=env)
@@ -875,12 +876,21 @@ def launch_clarify_agent(session_id: str, issue_number: int, store) -> None:
     except Exception as e:
         store.update_session(session_id, status="error", error=f"Nepodařilo se spustit agenta: {e}")
         return
-
+    duration_s = _time.time() - t0
     if result.returncode != 0:
         store.update_session(session_id, status="error",
                              error=f"Agent /clarify skončil s chybou (exit {result.returncode}).")
         return
-
+    cost_usd = 0.0
+    try:
+        out = _json.loads(result.stdout)
+        cost_usd = float(out.get("total_cost_usd", 0.0) or 0.0)
+    except Exception:
+        pass
+    session = store.get_session(session_id)
+    wiki_path = (session or {}).get("wiki_path") or (session or {}).get("form_data", {}).get("wiki_path")
+    if wiki_path:
+        _write_phase_metric(_REPO_ROOT / wiki_path, "Clarify", cost_usd, duration_s)
     store.update_session(session_id, status="done", validation_phase="clarify-finished")
 
 
@@ -943,14 +953,43 @@ def launch_analyze_agent(session_id: str, issue_number: int, store) -> None:
     store.update_session(session_id, status="done", validation_phase="done")
 
 
+_PHASE_METRIC_LABELS = {
+    "analyze-PO": "Product Owner",
+    "analyze-CO": "Conflict Detector",
+    "analyze-AR": "Architect",
+    "clarify":    "Clarify",
+}
+
+
+def _write_phase_metric(full_wiki: pathlib.Path, label: str, cost_usd: float, duration_s: float) -> None:
+    if not full_wiki.exists():
+        return
+    try:
+        content = full_wiki.read_text(encoding="utf-8")
+        metric_line = f"- {label}: ${cost_usd:.4f} · čas {_format_duration(duration_s)}"
+        escaped = re.escape(label)
+        if "## Metriky" not in content:
+            content += f"\n## Metriky\n{metric_line}\n- Celkem: $0.0000\n"
+        elif re.search(rf"^- {escaped}:", content, re.MULTILINE):
+            content = re.sub(rf"(?m)^- {escaped}:.*$", metric_line, content, count=1)
+        elif re.search(r"^- Celkem:", content, re.MULTILINE):
+            content = re.sub(r"(?m)^(- Celkem:)", rf"{metric_line}\n\1", content, count=1)
+        else:
+            content = re.sub(r"(## Metriky\n)", rf"\1{metric_line}\n", content, count=1)
+        full_wiki.write_text(content, encoding="utf-8")
+    except Exception:
+        pass
+
+
 def _launch_analysis_phase_agent(session_id: str, issue_number: int, store, command: str, phase_start: str, phase_done: str) -> None:
-    import shutil
+    import shutil, time as _time
     store.update_session(session_id, status="analyzing", validation_phase=phase_start)
     claude_bin = shutil.which("claude") or "/opt/homebrew/bin/claude"
     cmd = [claude_bin, "-p", f"/{command} {issue_number}", "--output-format", "json"]
     env = os.environ.copy()
     env["TF_SESSION_ID"] = session_id
     env["TF_API_PORT"] = os.environ.get("PORT", "5001")
+    t0 = _time.time()
     try:
         result = subprocess.run(cmd, stdin=subprocess.DEVNULL, capture_output=True, text=True,
                                 cwd=str(_REPO_ROOT), env=env)
@@ -960,10 +999,22 @@ def _launch_analysis_phase_agent(session_id: str, issue_number: int, store, comm
     except Exception as e:
         store.update_session(session_id, status="error", error=f"Nepodařilo se spustit agenta: {e}")
         return
+    duration_s = _time.time() - t0
     if result.returncode != 0:
         store.update_session(session_id, status="error",
                              error=f"Agent /{command} skončil s chybou (exit {result.returncode}).")
         return
+    cost_usd = 0.0
+    try:
+        out = _json.loads(result.stdout)
+        cost_usd = float(out.get("total_cost_usd", 0.0) or 0.0)
+    except Exception:
+        pass
+    session = store.get_session(session_id)
+    wiki_path = (session or {}).get("wiki_path") or (session or {}).get("form_data", {}).get("wiki_path")
+    if wiki_path:
+        metric_label = _PHASE_METRIC_LABELS.get(command, command)
+        _write_phase_metric(_REPO_ROOT / wiki_path, metric_label, cost_usd, duration_s)
     store.update_session(session_id, status="done", validation_phase=phase_done)
 
 
